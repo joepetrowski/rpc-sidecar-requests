@@ -5,7 +5,7 @@
 import requests
 import json
 
-max_block = 775_001
+max_block = 775_000
 
 base_url = 'http://127.0.0.1:8080'
 path = 'block'
@@ -42,8 +42,27 @@ def sync(height):
 			print('Sidecar request failed! Returning blocks fetched so far...')
 			break
 		block_info = process_response(response, block)
+		check_for_double_xt(block_info)
 		responses.append(block_info)
 	return responses
+
+def check_for_double_xt(block_info):
+	assert(type(block_info) == dict)
+	if 'extrinsics' in block_info.keys():
+		xts = block_info['extrinsics']
+		assert(type(xts) == list)
+		xt_len = len(xts)
+		for ii in range(0, xt_len):
+			for jj in range(0, ii):
+				if xts[ii]['hash'] == xts[jj]['hash'] and ii != jj:
+					print(
+						'Warn! Block {} has duplicate extrinsics. Hash: {}'.format(
+							block_info['number'],
+							xts[ii]['hash']
+						)
+					)
+	else:
+		print('Block {} has no extrinsics.'.format(block_info['number']))
 
 if __name__ == "__main__":
 	blocks = sync(max_block)
