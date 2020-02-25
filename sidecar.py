@@ -5,7 +5,6 @@
 import requests
 import json
 
-responses = []
 max_block = 775_001
 
 base_url = 'http://127.0.0.1:8080'
@@ -31,8 +30,20 @@ def process_response(response, block_number):
 			'number' : block_number,
 			'Response Error' : response.status_code
 		}
+	return block_info
 
-for block in range(0, max_block):
-	response = requests.get(base_url + '/' + path + '/' + str(block))
-	block_info = process_response(response, block)
-	responses.append(block_info)
+def sync(height):
+	responses = []
+	for block in range(0, height):
+		try:
+			response = requests.get(base_url + '/' + path + '/' + str(block))
+		except:
+			# Probably the sidecar has crashed.
+			print('Sidecar request failed! Returning blocks fetched so far...')
+			break
+		block_info = process_response(response, block)
+		responses.append(block_info)
+	return responses
+
+if __name__ == "__main__":
+	blocks = sync(max_block)
