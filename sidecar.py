@@ -105,6 +105,20 @@ def get_highest_synced(blocks):
 		highest_synced = blocks[-1]['number']
 	return highest_synced
 
+def add_new_blocks(blocks, highest_synced, chain_tip):
+	# `highest_synced + 1` here because we only really want blocks with a child.
+	if chain_tip == highest_synced + 1:
+		print('Chain synced.')
+		time.sleep(10)
+	elif chain_tip > highest_synced + 1:
+		new_blocks = sync(highest_synced + 1, chain_tip)
+		blocks.extend(new_blocks)
+		time.sleep(1)
+	elif chain_tip < highest_synced + 1:
+		print('This is impossible, therefore somebody messed up.')
+		time.sleep(10)
+	return blocks
+
 if __name__ == "__main__":
 	if max_block == 0:
 		max_block = get_chain_height()
@@ -115,15 +129,4 @@ if __name__ == "__main__":
 		while True:
 			highest_synced = get_highest_synced(blocks)
 			chain_tip = get_chain_height()
-
-			# `highest_synced + 1` here because we only really want blocks with a child.
-			if chain_tip == highest_synced + 1:
-				print('Chain synced.')
-				time.sleep(10)
-			elif chain_tip > highest_synced + 1:
-				new_blocks = sync(highest_synced + 1, chain_tip)
-				blocks.extend(new_blocks)
-				time.sleep(1)
-			elif chain_tip < highest_synced + 1:
-				print('This is impossible, therefore somebody messed up.')
-				time.sleep(10)
+			blocks = add_new_blocks(blocks, highest_synced, chain_tip)
