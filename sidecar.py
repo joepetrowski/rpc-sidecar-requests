@@ -123,10 +123,13 @@ def sleep(sec: int, blocks: list):
 	try:
 		time.sleep(sec)
 	except KeyboardInterrupt:
-		savedata = input('Do you want to save the block data? (y/n): ')
-		if savedata.lower() == 'y':
-			write_to_file(blocks)
-		exit()
+		write_and_exit(blocks)
+
+def write_and_exit(blocks: list):
+	savedata = input('Do you want to save the block data? (y/N): ')
+	if savedata.lower() == 'y':
+		write_to_file(blocks)
+	exit()
 
 def write_to_file(blocks: list):
 	with open('blocks.data', 'w') as f:
@@ -162,3 +165,5 @@ if __name__ == "__main__":
 			highest_synced = get_highest_synced(blocks)
 			chain_tip = get_chain_height()
 			blocks = add_new_blocks(blocks, highest_synced, chain_tip)
+	else:
+		write_and_exit(blocks)
