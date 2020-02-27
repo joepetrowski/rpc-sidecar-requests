@@ -7,9 +7,9 @@ import json
 import time
 
 # Block to start initial sync at (0 for genesis).
-start_block = 560_000
+start_block = 680_000
 # Block to sync to (set to 0 to sync to current chain tip).
-max_block = 0
+max_block = 687_000
 # Keep syncing? `False` will stop program after initial sync.
 continue_sync = True
 
@@ -109,15 +109,28 @@ def add_new_blocks(blocks, highest_synced, chain_tip):
 	# `highest_synced + 1` here because we only really want blocks with a child.
 	if chain_tip == highest_synced + 1:
 		print('Chain synced.')
-		time.sleep(10)
+		sleep(10, blocks)
 	elif chain_tip > highest_synced + 1:
 		new_blocks = sync(highest_synced + 1, chain_tip)
 		blocks.extend(new_blocks)
-		time.sleep(1)
+		sleep(1, blocks)
 	elif chain_tip < highest_synced + 1:
 		print('This is impossible, therefore somebody messed up.')
-		time.sleep(10)
+		sleep(10, blocks)
 	return blocks
+
+def sleep(sec, blocks):
+	try:
+		time.sleep(sec)
+	except KeyboardInterrupt:
+		savedata = input('Do you want to save the block data? (y/n): ')
+		if savedata.lower() == 'y':
+			write_to_file(blocks)
+		exit()
+
+def write_to_file(blocks):
+	with open('blocks.data', 'w') as f:
+		json.dump(blocks, f)
 
 if __name__ == "__main__":
 	if max_block == 0:
