@@ -23,7 +23,7 @@ def construct_url(path=None, param1=None, param2=None):
 				url = url + '/' + str(param2)
 	return url
 
-def print_block_info(block_info):
+def print_block_info(block_info: dict):
 	print(
 		'Block {:>9,} has state root {}'.format(
 			block_info['number'], block_info['stateRoot']
@@ -81,7 +81,7 @@ def sync(from_block=0, to_block=None):
 		responses.append(block_info)
 	return responses
 
-def check_for_double_xt(block_info):
+def check_for_double_xt(block_info: dict):
 	assert(type(block_info) == dict)
 	if 'extrinsics' in block_info.keys():
 		xts = block_info['extrinsics']
@@ -99,13 +99,13 @@ def check_for_double_xt(block_info):
 	else:
 		print('Block {} has no extrinsics.'.format(block_info['number']))
 
-def get_highest_synced(blocks):
+def get_highest_synced(blocks: list):
 	highest_synced = 0
 	if len(blocks) > 0:
 		highest_synced = blocks[-1]['number']
 	return highest_synced
 
-def add_new_blocks(blocks, highest_synced, chain_tip):
+def add_new_blocks(blocks: list, highest_synced: int, chain_tip: int):
 	# `highest_synced + 1` here because we only really want blocks with a child.
 	if chain_tip == highest_synced + 1:
 		print('Chain synced.')
@@ -119,7 +119,7 @@ def add_new_blocks(blocks, highest_synced, chain_tip):
 		sleep(10, blocks)
 	return blocks
 
-def sleep(sec, blocks):
+def sleep(sec: int, blocks: list):
 	try:
 		time.sleep(sec)
 	except KeyboardInterrupt:
@@ -128,9 +128,28 @@ def sleep(sec, blocks):
 			write_to_file(blocks)
 		exit()
 
-def write_to_file(blocks):
+def write_to_file(blocks: list):
 	with open('blocks.data', 'w') as f:
 		json.dump(blocks, f)
+
+def read_from_file(start_desired: int, end_desired: int):
+	try:
+		with open('blocks.data', 'r') as f:
+			blockdata = json.load(f)
+	except:
+		print('No data file.')
+		blockdata = []
+	if blockdata:
+		start_block = blockdata[0]['number']
+		end_block = blockdata[-1]['number']
+		if start_block <= start_desired and end_block >= end_desired:
+			# TODO: Prune to desired set.
+			print('Imported blocks {} to {}.'.format(start_block, end_block))
+		else:
+			# TODO: Return the partial set and sync around it.
+			blockdata = []
+			print('Block data exists but does not cover desired blocks.')
+	return blockdata
 
 if __name__ == "__main__":
 	if max_block == 0:
