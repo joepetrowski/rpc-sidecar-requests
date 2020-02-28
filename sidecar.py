@@ -7,9 +7,9 @@ import json
 import time
 
 # Block to start initial sync at (0 for genesis).
-start_block = 680_000
+start_block = 0
 # Block to sync to (set to 0 to sync to current chain tip).
-max_block = 687_000
+max_block = 0
 # Keep syncing? `False` will stop program after initial sync.
 continue_sync = True
 
@@ -17,9 +17,9 @@ def construct_url(path=None, param1=None, param2=None):
 	base_url = 'http://127.0.0.1:8080'
 	if path:
 		url = base_url + '/' + str(path)
-		if param1:
+		if param1 or param1 == 0:
 			url = url + '/' + str(param1)
-			if param2:
+			if param2 or param2 == 0:
 				url = url + '/' + str(param2)
 	return url
 
@@ -35,7 +35,7 @@ def process_response(response, block_number=None):
 		block_info = json.loads(response.text)
 		if block_number:
 			assert(block_info['number'] == block_number)
-		if block_info['number'] % 1000 == 0:
+		if block_info['number'] % 10_000 == 0:
 			# Print some info... really just to show that it's making progress.
 			print_block_info(block_info)
 	else:
@@ -96,6 +96,7 @@ def check_for_double_xt(block_info: dict):
 							xts[ii]['hash']
 						)
 					)
+					write_block_to_file(block_info, 'duplicate-xt')
 	else:
 		print('Block {} has no extrinsics.'.format(block_info['number']))
 
@@ -134,6 +135,11 @@ def write_and_exit(blocks: list):
 def write_to_file(blocks: list):
 	with open('blocks.data', 'w') as f:
 		json.dump(blocks, f)
+
+def write_block_to_file(block: dict, reason='info'):
+	fname = 'block-{}-{}.json'.format(block['number'], reason)
+	with open(fname, 'w') as f:
+		json.dump(block, f)
 
 def read_from_file(start_desired: int, end_desired: int):
 	try:
