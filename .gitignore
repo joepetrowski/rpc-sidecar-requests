@@ -1,3 +1,4 @@
 blocks/*
 *.data
 .vscode/*
+*.zip
