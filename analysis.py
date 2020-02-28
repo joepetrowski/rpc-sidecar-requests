@@ -16,7 +16,6 @@ def import_blocks(fname):
 # Will write an output file of the entire block in JSON format.
 def check_for_double_xt(block_info: dict, write: bool):
 	assert(type(block_info) == dict)
-	has_double = False
 	doubles = []
 	if 'extrinsics' in block_info.keys():
 		xts = block_info['extrinsics']
@@ -24,8 +23,9 @@ def check_for_double_xt(block_info: dict, write: bool):
 		xt_len = len(xts)
 		for ii in range(0, xt_len):
 			for jj in range(0, ii):
-				if xts[ii]['hash'] == xts[jj]['hash'] and ii != jj:
-					has_double = True
+				if xts[ii]['hash'] == xts[jj]['hash'] \
+				and (xts[ii]['hash'], block_info['number']) not in doubles \
+				and ii != jj:
 					print(
 						'Warn! Block {} has duplicate extrinsics. Hash: {}'.format(
 							block_info['number'],

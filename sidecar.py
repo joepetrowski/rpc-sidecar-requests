@@ -12,6 +12,8 @@ start_block = 0
 max_block = 0
 # Keep syncing? `False` will stop program after initial sync.
 continue_sync = True
+# Write blocks with duplicate extrinsics to individual files.
+write = False
 
 def construct_url(path=None, param1=None, param2=None):
 	base_url = 'http://127.0.0.1:8080'
@@ -63,7 +65,7 @@ def get_chain_height():
 		print('Warn! Bad response from client. Returning genesis block.')
 	return chain_height
 
-def sync(from_block=0, to_block=None):
+def sync(from_block=0, to_block=None, write=False):
 	responses = []
 	if not to_block:
 		to_block = get_chain_height()
@@ -77,11 +79,11 @@ def sync(from_block=0, to_block=None):
 			print('Sidecar request failed! Returning blocks fetched so far...')
 			break
 		block_info = process_response(response, block)
-		_ = check_for_double_xt(block_info)
+		_ = check_for_double_xt(block_info, write)
 		responses.append(block_info)
 	return responses
 
-def check_for_double_xt(block_info: dict):
+def check_for_double_xt(block_info: dict, write: bool):
 	assert(type(block_info) == dict)
 	doubles = []
 	if 'extrinsics' in block_info.keys():
@@ -90,7 +92,9 @@ def check_for_double_xt(block_info: dict):
 		xt_len = len(xts)
 		for ii in range(0, xt_len):
 			for jj in range(0, ii):
-				if xts[ii]['hash'] == xts[jj]['hash'] and ii != jj:
+				if xts[ii]['hash'] == xts[jj]['hash'] \
+				and (xts[ii]['hash'], block_info['number']) not in doubles \
+				and ii != jj:
 					print(
 						'Warn! Block {} has duplicate extrinsics. Hash: {}'.format(
 							block_info['number'],
@@ -98,7 +102,8 @@ def check_for_double_xt(block_info: dict):
 						)
 					)
 					doubles.append((xts[ii]['hash'], block_info['number']))
-					write_block_to_file(block_info, 'duplicate-xt', xts[ii]['hash'])
+					if write:
+						write_block_to_file(block_info, 'duplicate-xt', xts[ii]['hash'])
 	else:
 		print('Block {} has no extrinsics.'.format(block_info['number']))
 	return doubles
@@ -109,13 +114,13 @@ def get_highest_synced(blocks: list):
 		highest_synced = blocks[-1]['number']
 	return highest_synced
 
-def add_new_blocks(blocks: list, highest_synced: int, chain_tip: int):
+def add_new_blocks(blocks: list, highest_synced: int, chain_tip: int, write: bool):
 	# `highest_synced + 1` here because we only really want blocks with a child.
 	if chain_tip == highest_synced + 1:
 		print('Chain synced.')
 		sleep(10, blocks)
 	elif chain_tip > highest_synced + 1:
-		new_blocks = sync(highest_synced + 1, chain_tip)
+		new_blocks = sync(highest_synced + 1, chain_tip, write)
 		blocks.extend(new_blocks)
 		sleep(1, blocks)
 	elif chain_tip < highest_synced + 1:
@@ -171,12 +176,12 @@ if __name__ == "__main__":
 	if max_block == 0:
 		max_block = get_chain_height()
 	print('Starting sync from block {} to block {}'.format(start_block, max_block))
-	blocks = sync(start_block, max_block)
+	blocks = sync(start_block, max_block, write)
 
 	if continue_sync:
 		while True:
 			highest_synced = get_highest_synced(blocks)
 			chain_tip = get_chain_height()
-			blocks = add_new_blocks(blocks, highest_synced, chain_tip)
+			blocks = add_new_blocks(blocks, highest_synced, chain_tip, write)
 	else:
 		write_and_exit(blocks)
