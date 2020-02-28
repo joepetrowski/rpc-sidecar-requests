@@ -77,12 +77,13 @@ def sync(from_block=0, to_block=None):
 			print('Sidecar request failed! Returning blocks fetched so far...')
 			break
 		block_info = process_response(response, block)
-		check_for_double_xt(block_info)
+		_ = check_for_double_xt(block_info)
 		responses.append(block_info)
 	return responses
 
 def check_for_double_xt(block_info: dict):
 	assert(type(block_info) == dict)
+	doubles = []
 	if 'extrinsics' in block_info.keys():
 		xts = block_info['extrinsics']
 		assert(type(xts) == list)
@@ -96,9 +97,11 @@ def check_for_double_xt(block_info: dict):
 							xts[ii]['hash']
 						)
 					)
-					write_block_to_file(block_info, 'duplicate-xt')
+					doubles.append((xts[ii]['hash'], block_info['number']))
+					write_block_to_file(block_info, 'duplicate-xt', xts[ii]['hash'])
 	else:
 		print('Block {} has no extrinsics.'.format(block_info['number']))
+	return doubles
 
 def get_highest_synced(blocks: list):
 	highest_synced = 0
@@ -136,10 +139,14 @@ def write_to_file(blocks: list):
 	with open('blocks.data', 'w') as f:
 		json.dump(blocks, f)
 
-def write_block_to_file(block: dict, reason='info'):
-	fname = 'block-{}-{}.json'.format(block['number'], reason)
+def write_block_to_file(block: dict, reason='info', txhash='0x00'):
+	fname = 'blocks/block-{}-{}-{}.json'.format(
+		block['number'],
+		reason,
+		str(txhash)
+	)
 	with open(fname, 'w') as f:
-		json.dump(block, f)
+		json.dump(block, f, indent=4)
 
 def read_from_file(start_desired: int, end_desired: int):
 	try:
