@@ -1,15 +1,36 @@
 #%% 
 # Useful functions for dealing with block data.
 
+import argparse
 import json
+import time
+import pickle
 
-# Write blocks with duplicate extrinsics to files.
-write = False
+# Parse command line arguments.
+def parse_args():
+	parser = argparse.ArgumentParser()
+	parser.add_argument(
+		'-w', '--write-files',
+		help='Write blocks that have duplicate transactions to files.',
+		action='store_true'
+	)
+	parser.add_argument(
+		'-j', '--json',
+		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.'
+		action='store_true'
+	)
+	args = parser.parse_args()
+
+	return (args.write_files, args.json)
 
 # Import blocks from a data file.
-def import_blocks(fname):
-	with open(fname, 'r') as f:
-		blocks = json.load(f)
+def import_blocks(fname, use_json):
+	if use_json:
+		with open(fname, 'r') as f:
+			blocks = json.load(f)
+	else:
+		with open(fname, 'rb') as f:
+			blocks = pickle.load(f)
 	return blocks
 
 # Check a single block that has two copies of the same extrinsic.
@@ -20,19 +41,19 @@ def check_for_double_xt(block_info: dict, write: bool):
 	if 'extrinsics' in block_info.keys():
 		xts = block_info['extrinsics']
 		assert(type(xts) == list)
-		xt_len = len(xts)
-		for ii in range(0, xt_len):
+		for ii in range(0, len(xts)):
 			for jj in range(0, ii):
 				if xts[ii]['hash'] == xts[jj]['hash'] \
-				and (xts[ii]['hash'], block_info['number']) not in doubles \
+				and (xts[ii]['hash'], block_info['number'], xts[ii]['method']) not in doubles \
 				and ii != jj:
 					print(
-						'Warn! Block {} has duplicate extrinsics. Hash: {}'.format(
+						'Block: {} Method: {} Hash: {}'.format(
 							block_info['number'],
+							xts[ii]['method'],
 							xts[ii]['hash']
 						)
 					)
-					doubles.append((xts[ii]['hash'], block_info['number']))
+					doubles.append((xts[ii]['hash'], block_info['number'], xts[ii]['method']))
 					if write:
 						write_block_to_file(block_info, 'duplicate-xt', xts[ii]['hash'])
 	else:
@@ -81,17 +102,21 @@ def duplicates_in_many_blocks(doubles: list):
 						many_block_txs[doubles[ii][0]].append(doubles[jj][1])
 					if doubles[ii][1] not in many_block_txs[doubles[ii][0]]:
 						many_block_txs[doubles[ii][0]].append(doubles[ii][1])
-		if ii % 1000 == 0:
-			print('At list item {}'.format(ii))
 	return many_block_txs
 
 if __name__ == "__main__":
-	blocks = import_blocks('blocks.data')
+	(write, use_json) = parse_args()
+
+	start_time = time.time()
+	blocks = import_blocks('blocks.data', use_json)
+	import_time = time.time()
 	doubles = check_blocks_for_double_xt(blocks, write) # List of (txHash, blockNumber)
-
-	check_block_duplicates = input(
-		'Do you want to check for duplicates in multiple blocks? Warning, this takes a long time. (y/N) '
+	doubles_time = time.time()
+	many_block_txs = duplicates_in_many_blocks(doubles)
+	duplicates_time = time.time()
+	
+	print('\nImport Time: {:.3f} s'.format(import_time - start_time))
+	print('Checking Doubles: {:.3f} s'.format(doubles_time - import_time))
+	print('Checking duplicates in many blocks: {:.3f} s'
+		.format(duplicates_time - doubles_time)
 	)
-
-	if check_block_duplicates.lower() == 'y':
-		many_block_txs = duplicates_in_many_blocks(doubles)

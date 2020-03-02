@@ -5,6 +5,8 @@
 import requests
 import json
 import time
+import pickle
+import parser
 
 # Block to start initial sync at (0 for genesis).
 start_block = 0
@@ -12,8 +14,23 @@ start_block = 0
 max_block = 0
 # Keep syncing? `False` will stop program after initial sync.
 continue_sync = True
-# Write blocks with duplicate extrinsics to individual files.
-write = False
+
+def parse_args():
+	parser = argparse.ArgumentParser()
+	parser.add_argument(
+		'-w', '--write-files',
+		help='Write blocks that have duplicate transactions to files.',
+		action='store_true'
+	)
+	parser.add_argument(
+		'-j', '--json',
+		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.'
+		action='store_true'
+	)
+	args = parser.parse_args()
+
+	global write = args.write_files
+	global use_json = args.json
 
 def construct_url(path=None, param1=None, param2=None):
 	base_url = 'http://127.0.0.1:8080'
@@ -65,7 +82,7 @@ def get_chain_height():
 		print('Warn! Bad response from client. Returning genesis block.')
 	return chain_height
 
-def sync(from_block=0, to_block=None, write=False):
+def sync(from_block=0, to_block=None):
 	responses = []
 	if not to_block:
 		to_block = get_chain_height()
@@ -79,11 +96,11 @@ def sync(from_block=0, to_block=None, write=False):
 			print('Sidecar request failed! Returning blocks fetched so far...')
 			break
 		block_info = process_response(response, block)
-		_ = check_for_double_xt(block_info, write)
+		_ = check_for_double_xt(block_info)
 		responses.append(block_info)
 	return responses
 
-def check_for_double_xt(block_info: dict, write: bool):
+def check_for_double_xt(block_info: dict):
 	assert(type(block_info) == dict)
 	doubles = []
 	if 'extrinsics' in block_info.keys():
@@ -114,13 +131,13 @@ def get_highest_synced(blocks: list):
 		highest_synced = blocks[-1]['number']
 	return highest_synced
 
-def add_new_blocks(blocks: list, highest_synced: int, chain_tip: int, write: bool):
+def add_new_blocks(blocks: list, highest_synced: int, chain_tip: int):
 	# `highest_synced + 1` here because we only really want blocks with a child.
 	if chain_tip == highest_synced + 1:
 		print('Chain synced.')
 		sleep(10, blocks)
 	elif chain_tip > highest_synced + 1:
-		new_blocks = sync(highest_synced + 1, chain_tip, write)
+		new_blocks = sync(highest_synced + 1, chain_tip)
 		blocks.extend(new_blocks)
 		sleep(1, blocks)
 	elif chain_tip < highest_synced + 1:
@@ -141,8 +158,12 @@ def write_and_exit(blocks: list):
 	exit()
 
 def write_to_file(blocks: list):
-	with open('blocks.data', 'w') as f:
-		json.dump(blocks, f)
+	if use_json:
+		with open('blocks.data', 'w') as f:
+			json.dump(blocks, f)
+	else:
+		with open('blocks.data', 'wb') as f:
+			pickle.dump(blocks, f)
 
 def write_block_to_file(block: dict, reason='info', txhash='0x00'):
 	fname = 'blocks/block-{}-{}-{}.json'.format(
@@ -155,8 +176,12 @@ def write_block_to_file(block: dict, reason='info', txhash='0x00'):
 
 def read_from_file(start_desired: int, end_desired: int):
 	try:
-		with open('blocks.data', 'r') as f:
-			blockdata = json.load(f)
+		if use_json:
+			with open('blocks.data', 'r') as f:
+				blockdata = json.load(f)
+		else:
+			with open('blocks.data', 'rb') as f:
+				blockdata = pickle.load(f)
 	except:
 		print('No data file.')
 		blockdata = []
@@ -173,15 +198,17 @@ def read_from_file(start_desired: int, end_desired: int):
 	return blockdata
 
 if __name__ == "__main__":
+	parse_args()
+
 	if max_block == 0:
 		max_block = get_chain_height()
 	print('Starting sync from block {} to block {}'.format(start_block, max_block))
-	blocks = sync(start_block, max_block, write)
+	blocks = sync(start_block, max_block)
 
 	if continue_sync:
 		while True:
 			highest_synced = get_highest_synced(blocks)
 			chain_tip = get_chain_height()
-			blocks = add_new_blocks(blocks, highest_synced, chain_tip, write)
+			blocks = add_new_blocks(blocks, highest_synced, chain_tip)
 	else:
 		write_and_exit(blocks)

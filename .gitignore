@@ -2,3 +2,4 @@ blocks/*
 *.data
 .vscode/*
 *.zip
+*.pickle
