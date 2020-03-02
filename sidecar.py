@@ -29,8 +29,10 @@ def parse_args():
 	)
 	args = parser.parse_args()
 
-	global write = args.write_files
-	global use_json = args.json
+	global write
+	global use_json
+	write = args.write_files
+	use_json = args.json
 
 def construct_url(path=None, param1=None, param2=None):
 	base_url = 'http://127.0.0.1:8080'
@@ -162,7 +164,7 @@ def write_to_file(blocks: list):
 		with open('blocks.data', 'w') as f:
 			json.dump(blocks, f)
 	else:
-		with open('blocks.data', 'wb') as f:
+		with open('blocks.pickle', 'wb') as f:
 			pickle.dump(blocks, f)
 
 def write_block_to_file(block: dict, reason='info', txhash='0x00'):

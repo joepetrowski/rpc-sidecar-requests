@@ -16,26 +16,29 @@ def parse_args():
 	)
 	parser.add_argument(
 		'-j', '--json',
-		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.'
+		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.',
 		action='store_true'
 	)
 	args = parser.parse_args()
 
-	return (args.write_files, args.json)
+	global write
+	global use_json
+	write = args.write_files
+	use_json = args.json
 
 # Import blocks from a data file.
-def import_blocks(fname, use_json):
+def import_blocks(fname):
 	if use_json:
-		with open(fname, 'r') as f:
+		with open(fname + '.data', 'r') as f:
 			blocks = json.load(f)
 	else:
-		with open(fname, 'rb') as f:
+		with open(fname + '.pickle', 'rb') as f:
 			blocks = pickle.load(f)
 	return blocks
 
 # Check a single block that has two copies of the same extrinsic.
 # Will write an output file of the entire block in JSON format.
-def check_for_double_xt(block_info: dict, write: bool):
+def check_for_double_xt(block_info: dict):
 	assert(type(block_info) == dict)
 	doubles = []
 	if 'extrinsics' in block_info.keys():
@@ -62,10 +65,10 @@ def check_for_double_xt(block_info: dict, write: bool):
 
 # Check a list of blocks for duplicate extrinsics.
 # Returns a list of tuples, (transaction_hash, block_number).
-def check_blocks_for_double_xt(blocks: list, write: bool):
+def check_blocks_for_double_xt(blocks: list):
 	doubles= []
 	for block in blocks:
-		block_doubles = check_for_double_xt(block, write)
+		block_doubles = check_for_double_xt(block)
 		doubles.extend(block_doubles)
 	return doubles
 
@@ -105,12 +108,12 @@ def duplicates_in_many_blocks(doubles: list):
 	return many_block_txs
 
 if __name__ == "__main__":
-	(write, use_json) = parse_args()
+	parse_args()
 
 	start_time = time.time()
-	blocks = import_blocks('blocks.data', use_json)
+	blocks = import_blocks('blocks')
 	import_time = time.time()
-	doubles = check_blocks_for_double_xt(blocks, write) # List of (txHash, blockNumber)
+	doubles = check_blocks_for_double_xt(blocks) # List of (txHash, blockNumber)
 	doubles_time = time.time()
 	many_block_txs = duplicates_in_many_blocks(doubles)
 	duplicates_time = time.time()
