@@ -28,12 +28,14 @@ def parse_args():
 
 # Import blocks from a data file.
 def import_blocks(fname):
+	print('Importing blocks...')
 	if use_json:
 		with open(fname + '.data', 'r') as f:
 			blocks = json.load(f)
 	else:
 		with open(fname + '.pickle', 'rb') as f:
 			blocks = pickle.load(f)
+	print('Imported {:,} blocks.'.format(len(blocks)))
 	return blocks
 
 # Check a single block that has two copies of the same extrinsic.
@@ -71,6 +73,32 @@ def check_blocks_for_double_xt(blocks: list):
 		block_doubles = check_for_double_xt(block)
 		doubles.extend(block_doubles)
 	return doubles
+
+# Takes a list of methods, e.g. `['balances.transfer', 'staking.bond']` and returns
+# a list of blocks that contain any extrinsics with these methods.
+def find_xts_with_method(blocks: list, methods: list):
+	matches = []
+	for block in blocks:
+		match_info = check_for_method_matches(block, methods)
+		matches.extend(match_info)
+	return matches
+
+# If a block contains any of a set of methods, print out the block number and return
+# a list of `(block_number, method_matched, extrinsic_hash)`.
+def check_for_method_matches(block_info: dict, methods: list):
+	assert(type(block_info) == dict)
+	match_info = []
+	if 'extrinsics' in block_info.keys():
+		xts = block_info['extrinsics']
+		assert(type(xts) == list)
+		for xt in xts:
+			if xt['method'] in methods:
+				print(
+					'Found method {} in block number {:,}'
+						.format(xt['method'], block_info['number'])
+				)
+				match_info.extend((block_info['number'], xt['method'], xt['hash']))
+	return match_info
 
 # Write a single block to an output file in JSON format.
 def write_block_to_file(block: dict, reason='info', txhash='0x00'):
@@ -117,6 +145,7 @@ if __name__ == "__main__":
 	doubles_time = time.time()
 	many_block_txs = duplicates_in_many_blocks(doubles)
 	duplicates_time = time.time()
+	claims = find_xts_with_method(blocks, ['claims.claim'])
 	
 	print('\nImport Time: {:.3f} s'.format(import_time - start_time))
 	print('Checking Doubles: {:.3f} s'.format(doubles_time - import_time))

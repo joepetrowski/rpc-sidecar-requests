@@ -6,7 +6,7 @@ import requests
 import json
 import time
 import pickle
-import parser
+import argparse
 
 # Block to start initial sync at (0 for genesis).
 start_block = 0
@@ -24,7 +24,7 @@ def parse_args():
 	)
 	parser.add_argument(
 		'-j', '--json',
-		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.'
+		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.',
 		action='store_true'
 	)
 	args = parser.parse_args()
@@ -136,7 +136,7 @@ def get_highest_synced(blocks: list):
 def add_new_blocks(blocks: list, highest_synced: int, chain_tip: int):
 	# `highest_synced + 1` here because we only really want blocks with a child.
 	if chain_tip == highest_synced + 1:
-		print('Chain synced.')
+		print('Chain synced at height {:,}'.format(chain_tip))
 		sleep(10, blocks)
 	elif chain_tip > highest_synced + 1:
 		new_blocks = sync(highest_synced + 1, chain_tip)
@@ -177,17 +177,19 @@ def write_block_to_file(block: dict, reason='info', txhash='0x00'):
 		json.dump(block, f, indent=4)
 
 def read_from_file(start_desired: int, end_desired: int):
+	print('Importing blocks...')
 	try:
 		if use_json:
 			with open('blocks.data', 'r') as f:
 				blockdata = json.load(f)
 		else:
-			with open('blocks.data', 'rb') as f:
+			with open('blocks.pickle', 'rb') as f:
 				blockdata = pickle.load(f)
 	except:
 		print('No data file.')
 		blockdata = []
 	if blockdata:
+		print('Imported {:,} blocks.'.format(len(blockdata)))
 		start_block = blockdata[0]['number']
 		end_block = blockdata[-1]['number']
 		if start_block <= start_desired and end_block >= end_desired:
@@ -205,7 +207,8 @@ if __name__ == "__main__":
 	if max_block == 0:
 		max_block = get_chain_height()
 	print('Starting sync from block {} to block {}'.format(start_block, max_block))
-	blocks = sync(start_block, max_block)
+	# blocks = sync(start_block, max_block)
+	blocks = read_from_file(0, 10)
 
 	if continue_sync:
 		while True:
