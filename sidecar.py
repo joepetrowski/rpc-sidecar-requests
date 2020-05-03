@@ -13,7 +13,7 @@ start_block = 0
 # Block to sync to (set to 0 to sync to current chain tip).
 max_block = 0
 # Keep syncing? `False` will stop program after initial sync.
-continue_sync = True
+continue_sync = False
 
 def parse_args():
 	parser = argparse.ArgumentParser()
@@ -35,7 +35,7 @@ def parse_args():
 	use_json = args.json
 
 def construct_url(path=None, param1=None, param2=None):
-	base_url = 'http://127.0.0.1:8080'
+	base_url = 'https://cb-cc1-h6ffqwh0ynup4.paritytech.net'
 	if path:
 		url = base_url + '/' + str(path)
 		if param1 or param1 == 0:
@@ -47,7 +47,7 @@ def construct_url(path=None, param1=None, param2=None):
 def print_block_info(block_info: dict):
 	print(
 		'Block {:>9,} has state root {}'.format(
-			block_info['number'], block_info['stateRoot']
+			int(block_info['number']), block_info['stateRoot']
 		)
 	)
 
@@ -55,8 +55,8 @@ def process_response(response, block_number=None):
 	if response.ok:
 		block_info = json.loads(response.text)
 		if block_number:
-			assert(block_info['number'] == block_number)
-		if block_info['number'] % 10_000 == 0:
+			assert(int(block_info['number']) == block_number)
+		if int(block_info['number']) % 2_000 == 0:
 			# Print some info... really just to show that it's making progress.
 			print_block_info(block_info)
 	else:
@@ -78,7 +78,7 @@ def get_chain_height():
 	block_info = process_response(response)
 
 	if block_info['number']:
-		chain_height = block_info['number']
+		chain_height = int(block_info['number'])
 	else:
 		chain_height = 0
 		print('Warn! Bad response from client. Returning genesis block.')
@@ -112,19 +112,19 @@ def check_for_double_xt(block_info: dict):
 		for ii in range(0, xt_len):
 			for jj in range(0, ii):
 				if xts[ii]['hash'] == xts[jj]['hash'] \
-				and (xts[ii]['hash'], block_info['number']) not in doubles \
+				and (xts[ii]['hash'], int(block_info['number'])) not in doubles \
 				and ii != jj:
 					print(
 						'Warn! Block {} has duplicate extrinsics. Hash: {}'.format(
-							block_info['number'],
+							int(block_info['number']),
 							xts[ii]['hash']
 						)
 					)
-					doubles.append((xts[ii]['hash'], block_info['number']))
+					doubles.append((xts[ii]['hash'], int(block_info['number'])))
 					if write:
 						write_block_to_file(block_info, 'duplicate-xt', xts[ii]['hash'])
 	else:
-		print('Block {} has no extrinsics.'.format(block_info['number']))
+		print('Block {} has no extrinsics.'.format(int(block_info['number'])))
 	return doubles
 
 def get_highest_synced(blocks: list):
@@ -161,14 +161,14 @@ def write_and_exit(blocks: list):
 
 def write_to_file(blocks: list):
 	if use_json:
-		with open('blocks.data', 'w') as f:
+		with open('testnet_blocks.data', 'w') as f:
 			json.dump(blocks, f)
 	else:
-		with open('blocks.pickle', 'wb') as f:
+		with open('testnet_blocks.pickle', 'wb') as f:
 			pickle.dump(blocks, f)
 
 def write_block_to_file(block: dict, reason='info', txhash='0x00'):
-	fname = 'blocks/block-{}-{}-{}.json'.format(
+	fname = 'blocks/testnet_block-{}-{}-{}.json'.format(
 		block['number'],
 		reason,
 		str(txhash)
@@ -180,10 +180,10 @@ def read_from_file(start_desired: int, end_desired: int):
 	print('Importing blocks...')
 	try:
 		if use_json:
-			with open('blocks.data', 'r') as f:
+			with open('testnet_blocks.data', 'r') as f:
 				blockdata = json.load(f)
 		else:
-			with open('blocks.pickle', 'rb') as f:
+			with open('testnet_blocks.pickle', 'rb') as f:
 				blockdata = pickle.load(f)
 	except:
 		print('No data file.')
@@ -207,8 +207,8 @@ if __name__ == "__main__":
 	if max_block == 0:
 		max_block = get_chain_height()
 	print('Starting sync from block {} to block {}'.format(start_block, max_block))
-	# blocks = sync(start_block, max_block)
-	blocks = read_from_file(0, 10)
+	blocks = sync(start_block, max_block)
+	# blocks = read_from_file(0, 10)
 
 	if continue_sync:
 		while True:
