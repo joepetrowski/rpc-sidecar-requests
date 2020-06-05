@@ -78,6 +78,10 @@ class Sidecar:
 		path = self.construct_url('metadata', block_number)
 		return self.sidecar_get(path)
 	
+	def claims(self, address, block_number=None):
+		path = self.construct_url('claims', address, block_number)
+		return self.sidecar_get(path)
+
 	def artifacts(self, block_number=None):
 		path = self.construct_url('tx', 'artifacts', block_number)
 		return self.sidecar_get(path)
