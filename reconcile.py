@@ -41,15 +41,18 @@ def value_transferred_in_block(block: dict, address: str):
 		value_transferred += value_reaped(xt['events'])
 	return value_transferred
 
+# Add function for value received.
+
 def value_reaped(events):
 	reaped = 0
 	for event in events:
+		# Add check to make sure it's the address we're concerned with.
 		if event['method'] == 'balances.DustLost':
 			reaped += int(event['data'][1])
 	return reaped
 
 balances_before_tx = get_balance(sidecar_url, address, block-1)
-balances_after_tx = get_balance(sidecar_url, address, block+1)
+balances_after_tx = get_balance(sidecar_url, address, block)
 block_data = get_block(sidecar_url, block)
 
 pre_tx_balance = int(balances_before_tx['free'])

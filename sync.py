@@ -7,6 +7,7 @@ import json
 import time
 import pickle
 import argparse
+from tkinter import messagebox
 
 class Sync:
 	def __init__(self, endpoint, write, use_json, start_block, end_block, continue_sync, fprefix):
@@ -23,7 +24,7 @@ class Sync:
 		self.blocks = []
 
 		self.process_inputs()
-	
+
 	def get_block(self, index: int):
 		return self.blocks[index]
 
@@ -50,7 +51,7 @@ class Sync:
 			response = requests.get(endpoint)
 		except:
 			print('Unable to connect to sidecar.')
-		
+
 		data = {}
 		if response.ok:
 			data = json.loads(response.text)
@@ -68,16 +69,46 @@ class Sync:
 			print('Warn! Bad response from client. Returning genesis block.')
 			return 0
 		self.process_block(latest_block)
-		chain_height = latest_block['number']	
+		chain_height = latest_block['number']
 		return chain_height
-	
+
 	def fetch_block(self, number: int):
 		url = self.construct_url('block', number)
 		block = self.sidecar_request(url)
 		if 'error' in block.keys():
 			print('Warn! Bad response from client on block {}.'.format(number))
 		self.process_block(block)
+		self.log_noteworthy(block)
 		return block
+
+	def log_noteworthy(self, block: dict):
+		if block['number'] % 10_000 == 0:
+			self.print_block_info(block)
+		for xt in block['extrinsics']:
+			if 'sudo' in xt['method']:
+				print('Block {}: {}'.format(block['number'], xt['method']))
+				messagebox.showwarning(
+					title='Sudo',
+					message='Block {}: {}'.format(block['number'], xt['method'])
+				)
+			if 'error' in xt['info']:
+				print('Block {}: Fee error'.format(block['number']))
+		if len(block['onInitialize']['events']) > 0:
+			self.log_events(block['onInitialize']['events'], block['number'])
+		if len(block['onFinalize']['events']) > 0:
+			self.log_events(block['onFinalize']['events'], block['number'])
+
+	def log_events(self, events: list, block_number: int):
+		for event in events:
+			if 'method' in event:
+				if event['method'] == 'scheduler.Dispatched':
+					print(
+						'Block {}: Scheduler Dispatched {}'.format(block_number, event['data'][1])
+					)
+				elif event['method'] == 'system.CodeUpdated':
+					print('Block {}: Code Updated'.format(block_number))
+				elif event['method'] == 'session.NewSession':
+					print('Block {}: New Session {}'.format(block_number, event['data'][0]))
 
 	# A bunch of asserts to make sure we have a valid block. Make block number an int.
 	def process_block(self, block: dict, block_number=None):
@@ -89,8 +120,6 @@ class Sync:
 		assert('onFinalize' in block.keys())
 		if block_number:
 			assert(int(block['number']) == block_number)
-		if int(block['number']) % 2_000 == 0:
-			self.print_block_info(block)
 
 	# Print some info about a block. Mostly used to show that sync is progressing.
 	def print_block_info(self, block: dict):
@@ -121,13 +150,13 @@ class Sync:
 		# `highest_synced + 1` here because we only really want blocks with a child.
 		if chain_tip == highest_synced + 1:
 			print('Chain synced at height {:,}'.format(chain_tip))
-			self.sleep(10)
+			self.sleep(60)
 		elif chain_tip > highest_synced + 1:
 			self.sync(highest_synced + 1, chain_tip)
 			self.sleep(1)
 		elif chain_tip < highest_synced + 1:
 			print('This is impossible, therefore somebody messed up.')
-			self.sleep(10)
+			self.sleep(60)
 
 	# Wait, but if interrupted, exit.
 	def sleep(self, sec: int):
@@ -204,16 +233,28 @@ def parse_args():
 		help='Import blocks from JSON (plaintext) file. Slower than the default, pickle.',
 		action='store_true'
 	)
+	parser.add_argument(
+		'-s', '--start-block',
+		help='First block to import.',
+		type=int,
+		default=0
+	)
+	parser.add_argument(
+		'-m', '--max-block',
+		help='Max block number to import. 0 means chain tip. Default 0.',
+		type=int,
+		default=0
+	)
 	args = parser.parse_args()
 
 	write = args.write_files
 	use_json = args.json
-	return (write, use_json)
+	start_block = args.start_block
+	max_block = args.max_block
+	return (write, use_json, start_block, max_block)
 
 if __name__ == "__main__":
-	(write, use_json) = parse_args()
-	start_block = 2349900
-	max_block = 0
+	(write, use_json, start_block, max_block) = parse_args()
 
 	endpoint = 'http://127.0.0.1:8080'
 	syncer = Sync(endpoint, write, use_json, start_block, max_block, True, 'blockdata')

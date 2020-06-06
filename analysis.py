@@ -1,6 +1,5 @@
 #%% 
 # Useful functions for dealing with block data.
-
 import argparse
 import json
 import time
@@ -49,16 +48,16 @@ def check_for_double_xt(block_info: dict):
 		for ii in range(0, len(xts)):
 			for jj in range(0, ii):
 				if xts[ii]['hash'] == xts[jj]['hash'] \
-				and (xts[ii]['hash'], block_info['number'], xts[ii]['method']) not in doubles \
+				and (xts[ii]['hash'], int(block_info['number']), xts[ii]['method']) not in doubles \
 				and ii != jj:
 					print(
 						'Block: {} Method: {} Hash: {}'.format(
-							block_info['number'],
+							int(block_info['number']),
 							xts[ii]['method'],
 							xts[ii]['hash']
 						)
 					)
-					doubles.append((xts[ii]['hash'], block_info['number'], xts[ii]['method']))
+					doubles.append((xts[ii]['hash'], int(block_info['number']), xts[ii]['method']))
 					if write:
 						write_block_to_file(block_info, 'duplicate-xt', xts[ii]['hash'])
 	else:
@@ -95,9 +94,9 @@ def check_for_method_matches(block_info: dict, methods: list):
 			if xt['method'] in methods:
 				print(
 					'Found method {} in block number {:,}'
-						.format(xt['method'], block_info['number'])
+						.format(xt['method'], int(block_info['number']))
 				)
-				match_info.extend((block_info['number'], xt['method'], xt['hash']))
+				match_info.extend((int(block_info['number']), xt['method'], xt['hash']))
 	return match_info
 
 # Write a single block to an output file in JSON format.
@@ -136,16 +135,16 @@ def duplicates_in_many_blocks(doubles: list):
 	return many_block_txs
 
 if __name__ == "__main__":
-	parse_args()
+	# parse_args()
 
 	start_time = time.time()
-	blocks = import_blocks('blocks')
+	blocks = import_blocks('testnet_blocks')
 	import_time = time.time()
-	doubles = check_blocks_for_double_xt(blocks) # List of (txHash, blockNumber)
+	# doubles = check_blocks_for_double_xt(blocks) # List of (txHash, blockNumber)
 	doubles_time = time.time()
-	many_block_txs = duplicates_in_many_blocks(doubles)
+	# many_block_txs = duplicates_in_many_blocks(doubles)
 	duplicates_time = time.time()
-	claims = find_xts_with_method(blocks, ['claims.claim'])
+	claims = find_xts_with_method(blocks, ['sudo.sudo', 'sudo.sudoAs'])
 	
 	print('\nImport Time: {:.3f} s'.format(import_time - start_time))
 	print('Checking Doubles: {:.3f} s'.format(doubles_time - import_time))

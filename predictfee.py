@@ -3,8 +3,7 @@ import requests
 import json
 
 # Submit a serialized transaction.
-# url = 'https://cb-cc1-h6ffqwh0ynup4.paritytech.net/tx/'
-url = 'https://cb-runtime-wk8yx7pds0ag.paritytech.net/tx/'
+url = 'http://127.0.0.1:8080/tx/fee-estimate/'
 tx_headers = {'Content-type' : 'application/json', 'Accept' : 'text/plain'}
 response = requests.post(
 	url,
