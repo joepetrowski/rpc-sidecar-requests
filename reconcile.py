@@ -2,8 +2,8 @@
 import requests
 import json
 
-block = 2349757
-address = '<enter address here>'
+block = 2592628
+address = 'EFteY6Fg4BsFfWdfkS6XmsgyWLK2G3UZQnk87DsNHNcWSEW'
 sidecar_url = 'http://127.0.0.1:8080/'
 
 def get_block(sidecar: str, block: int):
@@ -62,7 +62,8 @@ fee = get_fees_paid_in_block(block_data, address)
 
 expected = pre_tx_balance - transfer_value - fee
 
-#%%
+print('Block {}'.format(block))
+print('Address: {}'.format(address))
 print('Actual Balance:   {:>14}'.format(post_tx_balance))
 print('Expected Balance: {:>14}'.format(expected))
 print('              ------------------')

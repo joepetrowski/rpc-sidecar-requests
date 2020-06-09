@@ -10,11 +10,14 @@ import argparse
 from tkinter import messagebox
 
 class Sync:
-	def __init__(self, endpoint, write, use_json, start_block, end_block, continue_sync, fprefix):
+	def __init__(
+		self, endpoint, write, use_json, alerts, start_block, end_block, continue_sync, fprefix
+	):
 		# User inputs
 		self.endpoint = endpoint
 		self.write = write
 		self.use_json = use_json
+		self.alerts = alerts
 		self.start_block = start_block
 		self.end_block = end_block
 		self.continue_sync = continue_sync
@@ -85,14 +88,22 @@ class Sync:
 		if block['number'] % 10_000 == 0:
 			self.print_block_info(block)
 		for xt in block['extrinsics']:
+			if xt['signature'] and xt['signature']['signer'] == '14TKt6bUNjKJdfYqVDNFBqzDAwmJ7WaQwfUmxmizJHHrr1Gs':
+				print('Block {}: Sudo Proxy Alert! {}'.format(block['number'], xt['method']))
+			# if xt['signature'] and 'claims' not in xt['method']:
+				# print(
+				# 	'Block {}: {} from {}'
+				# 	.format(block['number'], xt['method'], xt['signature']['signer'])
+				# )
 			if 'sudo' in xt['method']:
-				print('Block {}: {}'.format(block['number'], xt['method']))
-				messagebox.showwarning(
-					title='Sudo',
-					message='Block {}: {}'.format(block['number'], xt['method'])
-				)
+				print('Block {}: Sudo Alert! {}'.format(block['number'], xt['method']))
+				# if self.alerts:
+				# 	messagebox.showwarning(
+				# 		title='Sudo',
+				# 		message='Block {}: {}'.format(block['number'], xt['method'])
+				# 	)
 			if 'error' in xt['info']:
-				print('Block {}: Fee error'.format(block['number']))
+				print('Block {}: Fee error on {}'.format(block['number'], xt['method']))
 		if len(block['onInitialize']['events']) > 0:
 			self.log_events(block['onInitialize']['events'], block['number'])
 		if len(block['onFinalize']['events']) > 0:
@@ -150,13 +161,13 @@ class Sync:
 		# `highest_synced + 1` here because we only really want blocks with a child.
 		if chain_tip == highest_synced + 1:
 			print('Chain synced at height {:,}'.format(chain_tip))
-			self.sleep(60)
+			self.sleep(5*60)
 		elif chain_tip > highest_synced + 1:
 			self.sync(highest_synced + 1, chain_tip)
 			self.sleep(1)
 		elif chain_tip < highest_synced + 1:
 			print('This is impossible, therefore somebody messed up.')
-			self.sleep(60)
+			self.sleep(5*60)
 
 	# Wait, but if interrupted, exit.
 	def sleep(self, sec: int):
@@ -234,6 +245,11 @@ def parse_args():
 		action='store_true'
 	)
 	parser.add_argument(
+		'-a', '--alerts',
+		help='Show pop-up alerts from sudo transactions.',
+		action='store_true'
+	)
+	parser.add_argument(
 		'-s', '--start-block',
 		help='First block to import.',
 		type=int,
@@ -249,21 +265,21 @@ def parse_args():
 
 	write = args.write_files
 	use_json = args.json
+	alerts = args.alerts
 	start_block = args.start_block
 	max_block = args.max_block
-	return (write, use_json, start_block, max_block)
+	return (write, use_json, alerts, start_block, max_block)
 
 if __name__ == "__main__":
-	(write, use_json, start_block, max_block) = parse_args()
+	(write, use_json, alerts, start_block, max_block) = parse_args()
 
 	endpoint = 'http://127.0.0.1:8080'
-	syncer = Sync(endpoint, write, use_json, start_block, max_block, True, 'blockdata')
+	syncer = Sync(endpoint, write, use_json, alerts, start_block, max_block, True, 'blockdata')
 
 	if max_block == 0:
 		max_block = syncer.get_chain_height()
 	print('Starting sync from block {} to block {}'.format(start_block, max_block))
 	blocks = syncer.sync(start_block, max_block)
-	# blocks = read_from_file(0, 10)
 
 	if syncer.continue_sync:
 		while True:

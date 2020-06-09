@@ -59,7 +59,7 @@ class Sidecar:
 		return self.sidecar_get(path)
 	
 	def balance(self, address, block_number=None):
-		path = self.construct_url('address', address, block_number)
+		path = self.construct_url('balance', address, block_number)
 		return self.sidecar_get(path)
 	
 	def payout(self, address, block_number=None):

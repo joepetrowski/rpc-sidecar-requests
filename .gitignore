@@ -3,3 +3,4 @@ blocks/*
 .vscode/*
 *.zip
 *.pickle
+__pycache__
