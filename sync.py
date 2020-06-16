@@ -11,7 +11,7 @@ from tkinter import messagebox
 
 class Sync:
 	def __init__(
-		self, endpoint, write, use_json, alerts, start_block, end_block, continue_sync, fprefix
+		self, endpoint, write, use_json, alerts, start_block, end_block, fprefix
 	):
 		# User inputs
 		self.endpoint = endpoint
@@ -20,7 +20,6 @@ class Sync:
 		self.alerts = alerts
 		self.start_block = start_block
 		self.end_block = end_block
-		self.continue_sync = continue_sync
 		self.file_prefix = fprefix
 
 		# Constructors
@@ -71,7 +70,7 @@ class Sync:
 		if 'error' in latest_block.keys():
 			print('Warn! Bad response from client. Returning genesis block.')
 			return 0
-		self.process_block(latest_block)
+		latest_block = self.process_block(latest_block)
 		chain_height = latest_block['number']
 		return chain_height
 
@@ -80,7 +79,7 @@ class Sync:
 		block = self.sidecar_request(url)
 		if 'error' in block.keys():
 			print('Warn! Bad response from client on block {}.'.format(number))
-		self.process_block(block)
+		block = self.process_block(block)
 		self.log_noteworthy(block)
 		return block
 
@@ -90,11 +89,6 @@ class Sync:
 		for xt in block['extrinsics']:
 			if xt['signature'] and xt['signature']['signer'] == '14TKt6bUNjKJdfYqVDNFBqzDAwmJ7WaQwfUmxmizJHHrr1Gs':
 				print('Block {}: Sudo Proxy Alert! {}'.format(block['number'], xt['method']))
-			# if xt['signature'] and 'claims' not in xt['method']:
-				# print(
-				# 	'Block {}: {} from {}'
-				# 	.format(block['number'], xt['method'], xt['signature']['signer'])
-				# )
 			if 'sudo' in xt['method']:
 				print('Block {}: Sudo Alert! {}'.format(block['number'], xt['method']))
 				# if self.alerts:
@@ -131,12 +125,13 @@ class Sync:
 		assert('onFinalize' in block.keys())
 		if block_number:
 			assert(int(block['number']) == block_number)
+		return block
 
 	# Print some info about a block. Mostly used to show that sync is progressing.
 	def print_block_info(self, block: dict):
 		print(
 			'Block {:>9,} has state root {}'.format(
-				int(block['number']), block['stateRoot']
+				block['number'], block['stateRoot']
 			)
 		)
 
@@ -161,13 +156,13 @@ class Sync:
 		# `highest_synced + 1` here because we only really want blocks with a child.
 		if chain_tip == highest_synced + 1:
 			print('Chain synced at height {:,}'.format(chain_tip))
-			self.sleep(5*60)
+			self.sleep(30)
 		elif chain_tip > highest_synced + 1:
 			self.sync(highest_synced + 1, chain_tip)
 			self.sleep(1)
 		elif chain_tip < highest_synced + 1:
 			print('This is impossible, therefore somebody messed up.')
-			self.sleep(5*60)
+			self.sleep(30)
 
 	# Wait, but if interrupted, exit.
 	def sleep(self, sec: int):
@@ -257,9 +252,14 @@ def parse_args():
 	)
 	parser.add_argument(
 		'-m', '--max-block',
-		help='Max block number to import. 0 means chain tip. Default 0.',
+		help='Max block number to import. 0 means chain tip. Default 0. Implies no continuation of sync.',
 		type=int,
 		default=0
+	)
+	parser.add_argument(
+		'--no-continue',
+		help='Do not continue syncing the chain after reaching the chain tip.',
+		action='store_true',
 	)
 	args = parser.parse_args()
 
@@ -268,20 +268,23 @@ def parse_args():
 	alerts = args.alerts
 	start_block = args.start_block
 	max_block = args.max_block
-	return (write, use_json, alerts, start_block, max_block)
+	continue_sync = not args.no_continue
+	if max_block != 0:
+		continue_sync = False
+	return (write, use_json, alerts, start_block, max_block, continue_sync)
 
 if __name__ == "__main__":
-	(write, use_json, alerts, start_block, max_block) = parse_args()
+	(write, use_json, alerts, start_block, max_block, continue_sync) = parse_args()
 
 	endpoint = 'http://127.0.0.1:8080'
-	syncer = Sync(endpoint, write, use_json, alerts, start_block, max_block, True, 'blockdata')
+	syncer = Sync(endpoint, write, use_json, alerts, start_block, max_block, 'blockdata')
 
 	if max_block == 0:
 		max_block = syncer.get_chain_height()
 	print('Starting sync from block {} to block {}'.format(start_block, max_block))
 	blocks = syncer.sync(start_block, max_block)
 
-	if syncer.continue_sync:
+	if continue_sync:
 		while True:
 			highest_synced = syncer.get_highest_synced()
 			chain_tip = syncer.get_chain_height()
