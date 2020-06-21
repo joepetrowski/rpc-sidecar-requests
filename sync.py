@@ -5,25 +5,25 @@
 import requests
 import json
 import time
+from datetime import datetime
 import pickle
 import argparse
-from tkinter import messagebox
 
 class Sync:
 	def __init__(
-		self, endpoint, write, use_json, alerts, start_block, end_block, fprefix
+		self, endpoint, write, use_json, start_block, end_block, fprefix
 	):
 		# User inputs
 		self.endpoint = endpoint
 		self.write = write
 		self.use_json = use_json
-		self.alerts = alerts
 		self.start_block = start_block
 		self.end_block = end_block
 		self.file_prefix = fprefix
 
 		# Constructors
 		self.blocks = []
+		self.last_block_time = 0
 
 		self.process_inputs()
 
@@ -80,28 +80,73 @@ class Sync:
 		if 'error' in block.keys():
 			print('Warn! Bad response from client on block {}.'.format(number))
 		block = self.process_block(block)
+		block_time = self.get_block_time(block)
 		self.log_noteworthy(block)
 		return block
 
+	def get_block_time(self, block: dict):
+		ts = 0
+		for xt in block['extrinsics']:
+			if xt['method'] == 'timestamp.set':
+				ts = int(xt['newArgs']['now']) / 1000
+				break
+		if ts == 0:
+			print('No time set for block {}'.format(block['number']))
+		return ts
+
+	def log_new_day(self, block: dict):
+		this_block_time = self.get_block_time(block)
+		last_block_date = datetime.utcfromtimestamp(self.last_block_time).strftime('%Y-%m-%d')
+		this_block_date = datetime.utcfromtimestamp(this_block_time).strftime('%Y-%m-%d')
+		self.last_block_time = this_block_time
+		if this_block_date > last_block_date:
+			print('Block {}: First block of {}'.format(block['number'], this_block_date))
+
 	def log_noteworthy(self, block: dict):
+		# Log if it's a new day
+		self.log_new_day(block)
+
+		# Log to show we're making progress every once in a while
 		if block['number'] % 10_000 == 0:
 			self.print_block_info(block)
+
+		# Log some noteable extrinsics
 		for xt in block['extrinsics']:
+			# Did I get paid, yo
+			if xt['method'] == 'staking.payoutStakers' or xt['method'] == 'utility.batch':
+				payout = self.check_for_payouts(xt)
+				if payout > 0:
+					print('Block {}: Staking payout! {} tokens'.format(block['number'], payout / 1e12))
+
+			# Did the proxy sudo account make a transaction
 			if xt['signature'] and xt['signature']['signer'] == '14TKt6bUNjKJdfYqVDNFBqzDAwmJ7WaQwfUmxmizJHHrr1Gs':
 				print('Block {}: Sudo Proxy Alert! {}'.format(block['number'], xt['method']))
+
+			# Did the sudo account make a transaction
 			if 'sudo' in xt['method']:
 				print('Block {}: Sudo Alert! {}'.format(block['number'], xt['method']))
-				# if self.alerts:
-				# 	messagebox.showwarning(
-				# 		title='Sudo',
-				# 		message='Block {}: {}'.format(block['number'], xt['method'])
-				# 	)
+
+			# Did sidecar fail to get transaction fees
 			if 'error' in xt['info']:
 				print('Block {}: Fee error on {}'.format(block['number'], xt['method']))
+
+		# Log any interesting events from hooks
 		if len(block['onInitialize']['events']) > 0:
 			self.log_events(block['onInitialize']['events'], block['number'])
 		if len(block['onFinalize']['events']) > 0:
 			self.log_events(block['onFinalize']['events'], block['number'])
+
+	def check_for_payouts(self, xt: dict):
+		addresses_of_interest = [
+			'addr1',
+			'addr2'
+		]
+		payout = 0
+		if 'events' in xt:
+			for event in xt['events']:
+				if 'method' in event and event['method'] == 'staking.Reward' and event['data'][0] in addresses_of_interest:
+					payout += int(event['data'][1])
+		return payout
 
 	def log_events(self, events: list, block_number: int):
 		for event in events:
@@ -129,11 +174,7 @@ class Sync:
 
 	# Print some info about a block. Mostly used to show that sync is progressing.
 	def print_block_info(self, block: dict):
-		print(
-			'Block {:>9,} has state root {}'.format(
-				block['number'], block['stateRoot']
-			)
-		)
+		print('Just passed block {:,}'.format(block['number']))
 
 	# Actually get blocks.
 	def sync(self, from_block=0, to_block=None):
@@ -153,9 +194,11 @@ class Sync:
 
 	# The main logic about adding new blocks to the chain.
 	def add_new_blocks(self, highest_synced: int, chain_tip: int):
+		now = int(time.time())
 		# `highest_synced + 1` here because we only really want blocks with a child.
 		if chain_tip == highest_synced + 1:
-			print('Chain synced at height {:,}'.format(chain_tip))
+			if now % 50 == 0:
+				print('Chain synced at height {:,}'.format(chain_tip))
 			self.sleep(30)
 		elif chain_tip > highest_synced + 1:
 			self.sync(highest_synced + 1, chain_tip)
@@ -240,11 +283,6 @@ def parse_args():
 		action='store_true'
 	)
 	parser.add_argument(
-		'-a', '--alerts',
-		help='Show pop-up alerts from sudo transactions.',
-		action='store_true'
-	)
-	parser.add_argument(
 		'-s', '--start-block',
 		help='First block to import.',
 		type=int,
@@ -265,19 +303,18 @@ def parse_args():
 
 	write = args.write_files
 	use_json = args.json
-	alerts = args.alerts
 	start_block = args.start_block
 	max_block = args.max_block
 	continue_sync = not args.no_continue
 	if max_block != 0:
 		continue_sync = False
-	return (write, use_json, alerts, start_block, max_block, continue_sync)
+	return (write, use_json, start_block, max_block, continue_sync)
 
 if __name__ == "__main__":
-	(write, use_json, alerts, start_block, max_block, continue_sync) = parse_args()
+	(write, use_json, start_block, max_block, continue_sync) = parse_args()
 
 	endpoint = 'http://127.0.0.1:8080'
-	syncer = Sync(endpoint, write, use_json, alerts, start_block, max_block, 'blockdata')
+	syncer = Sync(endpoint, write, use_json, start_block, max_block, 'blockdata')
 
 	if max_block == 0:
 		max_block = syncer.get_chain_height()
