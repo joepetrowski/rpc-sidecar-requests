@@ -4,3 +4,4 @@ blocks/*
 *.zip
 *.pickle
 __pycache__
+addresses.json

@@ -69,6 +69,10 @@ class Sidecar:
 	def staking(self, address, block_number=None):
 		path = self.construct_url('staking', address, block_number)
 		return self.sidecar_get(path)
+	
+	def staking_info(self, block_number=None):
+		path = self.construct_url('staking-info', block_number)
+		return self.sidecar_get(path)
 
 	def vesting(self, address, block_number=None):
 		path = self.construct_url('vesting', address, block_number)
