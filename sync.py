@@ -22,15 +22,15 @@ class Sync:
 		self.file_prefix = inputs['fprefix']
 		self.addresses_of_interest = inputs['addresses']
 
+		self.process_inputs()
+
 		# Constructors
 		self.blocks = []
 		self.last_block_time = 0
+		self.network = self.get_chain_spec()
+		self.decimals = 1e12
 
-		self.process_inputs()
-
-	# Access a block that's already been fetched from the network.
-	def get_block(self, index: int):
-		return self.blocks[index]
+		print('Connected to Sidecar on the {} network.'.format(self.network))
 
 	# Process the user's inputs to the class.
 	def process_inputs(self):
@@ -38,12 +38,19 @@ class Sync:
 			assert(self.end_block > self.start_block)
 		if self.end_block == 0:
 			self.end_block = self.get_chain_height()
+		if self.endpoint[-1] != '/':
+			self.endpoint = self.endpoint + '/'
+	
+	def get_chain_spec(self):
+		url = self.construct_url('tx', 'artifacts')
+		artifacts = self.sidecar_request(url)
+		return artifacts['specName']
 
 	# Construct a path to some sidecar info.
 	def construct_url(self, path=None, param1=None, param2=None):
 		base_url = self.endpoint
 		if path:
-			url = base_url + '/' + str(path)
+			url = base_url + str(path)
 			if param1 or param1 == 0:
 				url = url + '/' + str(param1)
 				if param2 or param2 == 0:
@@ -125,15 +132,19 @@ class Sync:
 			if xt['method'] == 'staking.payoutStakers' or xt['method'] == 'utility.batch':
 				payout = self.check_for_payouts(xt)
 				if payout > 0:
-					print('Block {}: Staking payout! {} tokens'.format(bn, payout / 1e12))
+					print('Block {}: Staking payout! {} tokens'.format(bn, payout / self.decimals))
 
-			# Did the proxy sudo account make a transaction
-			if xt['signature'] and xt['signature']['signer'] == '14TKt6bUNjKJdfYqVDNFBqzDAwmJ7WaQwfUmxmizJHHrr1Gs':
-				print('Block {}: Sudo Proxy Alert! {}'.format(bn, xt['method']))
+			# Sudo stuff
+			if self.network == 'polkadot' and bn < 799302:
+				# Did the proxy sudo account make a transaction
+				proxy = '14TKt6bUNjKJdfYqVDNFBqzDAwmJ7WaQwfUmxmizJHHrr1Gs'
+				if xt['signature'] and xt['signature']['signer'] == proxy:
+					print('Block {}: Sudo Proxy Alert! {}'.format(bn, xt['method']))
 
-			# Did the sudo account make a transaction
-			if 'sudo' in xt['method']:
-				print('Block {}: Sudo Alert! {}'.format(bn, xt['method']))
+				# Did the sudo account make a transaction
+				sudo = '1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw'
+				if xt['signature'] and xt['signature']['signer'] == sudo:
+					print('Block {}: Sudo Alert! {}'.format(bn, xt['method']))
 
 			# Did sidecar fail to get transaction fees
 			fee_error = False
@@ -191,7 +202,7 @@ class Sync:
 			if e['method'] == pallet + '.Deposit':
 				v = int(e['data'][-1])
 		return v
-		
+
 	# Add some addresses that we're interested in and see if they received any staking rewards.
 	# Note: does not associate rewards with address. Generally only useful if the list of addresses
 	# is e.g. one for Polkadot, one for Kusama, etc.
@@ -200,33 +211,36 @@ class Sync:
 		payout = 0
 		if 'events' in xt:
 			for event in xt['events']:
-				if 'method' in event and event['method'] == 'staking.Reward' and event['data'][0] in a.values():
+				if (
+					'method' in event
+					and event['method'] == 'staking.Reward'
+					and 'data' in event
+					and event['data'][0] in a.keys()
+				):
 					payout += int(event['data'][1])
 		return payout
 
 	# Log interesting events that take place on initialize/finalize.
-	def log_events(self, events: list, block_number: int):
+	def log_events(self, events: list, bn: int):
 		for event in events:
 			if 'method' in event:
 				if event['method'] == 'scheduler.Dispatched':
-					print(
-						'Block {}: Scheduler Dispatched {}'.format(block_number, event['data'][1])
-					)
+					print('Block {}: Scheduler Dispatched {}'.format(bn, event['data'][1]))
 				elif event['method'] == 'system.CodeUpdated':
-					print('Block {}: Code Updated'.format(block_number))
+					print('Block {}: Code Updated'.format(bn))
 				elif event['method'] == 'session.NewSession':
-					print('Block {}: New Session {}'.format(block_number, event['data'][0]))
+					print('Block {}: New Session {}'.format(bn, event['data'][0]))
 
 	# A bunch of asserts to make sure we have a valid block. Make block number an int.
-	def process_block(self, block: dict, block_number=None):
+	def process_block(self, block: dict, bn=None):
 		assert('number' in block.keys())
 		block['number'] = int(block['number'])
 		assert('stateRoot' in block.keys())
 		assert('onInitialize' in block.keys())
 		assert('extrinsics' in block.keys())
 		assert('onFinalize' in block.keys())
-		if block_number:
-			assert(int(block['number']) == block_number)
+		if bn:
+			assert(int(block['number']) == bn)
 		return block
 
 	# Print some info about a block. Mostly used to show that sync is progressing.
@@ -238,8 +252,8 @@ class Sync:
 		if not to_block:
 			to_block = self.get_chain_height()
 
-		for block_number in range(from_block, to_block):
-			block = self.fetch_block(block_number)
+		for bn in range(from_block, to_block):
+			block = self.fetch_block(bn)
 			if 'error' not in block.keys():
 				self.blocks.append(block)
 		
@@ -343,7 +357,7 @@ def parse_args():
 		'--sidecar',
 		help='Endpoint for Sidecar.',
 		type=str,
-		default='http://127.0.0.1:8080'
+		default='http://127.0.0.1:8080/'
 	)
 	parser.add_argument(
 		'--no-continue',
