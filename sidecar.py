@@ -26,9 +26,9 @@ class Sidecar:
 			response = requests.get(endpoint)
 		except:
 			print('Unable to connect to sidecar.')
-		
+
 		return self.process_response(response)
-	
+
 	# Post some data to the sidecar.
 	def sidecar_post(self, endpoint, post_data):
 		tx_headers = {'Content-type' : 'application/json'}
@@ -40,9 +40,9 @@ class Sidecar:
 			)
 		except:
 			print('Unable to connect to sidecar.')
-		
+
 		return self.process_response(response)
-	
+
 	# Process HTTP response.
 	def process_response(self, response):
 		data = {}
@@ -53,15 +53,19 @@ class Sidecar:
 			print(error_message)
 			data = { 'error' : error_message }
 		return data
-	
+
+	def custom(self, route=''):
+		path = self.endpoint + route
+		return self.sidecar_get(path)
+
 	def block(self, block_number=None):
 		path = self.construct_url('block', block_number)
 		return self.sidecar_get(path)
-	
+
 	def balance(self, address, block_number=None):
 		path = self.construct_url('balance', address, block_number)
 		return self.sidecar_get(path)
-	
+
 	def payout(self, address, block_number=None):
 		path = self.construct_url('payout', address, block_number)
 		return self.sidecar_get(path)
@@ -69,7 +73,7 @@ class Sidecar:
 	def staking(self, address, block_number=None):
 		path = self.construct_url('staking', address, block_number)
 		return self.sidecar_get(path)
-	
+
 	def staking_info(self, block_number=None):
 		path = self.construct_url('staking-info', block_number)
 		return self.sidecar_get(path)
@@ -77,11 +81,11 @@ class Sidecar:
 	def vesting(self, address, block_number=None):
 		path = self.construct_url('vesting', address, block_number)
 		return self.sidecar_get(path)
-	
+
 	def metadata(self, block_number=None):
 		path = self.construct_url('metadata', block_number)
 		return self.sidecar_get(path)
-	
+
 	def claims(self, address, block_number=None):
 		path = self.construct_url('claims', address, block_number)
 		return self.sidecar_get(path)
