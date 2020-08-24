@@ -18,6 +18,7 @@ payout_info = s.custom(
 	'&depth=1&unclaimedOnly=false'
 )
 
+# Calculate payouts for an `address` from an array of `events`.
 def calc_payouts(events, address):
 	total_payout = 0
 	for event in events:
@@ -25,6 +26,7 @@ def calc_payouts(events, address):
 			total_payout += int(event['data'][1])
 	return total_payout
 
+# Fetch and calculate the total amount of payouts for an address in a particular block.
 payout_block = s.block(bn)
 for xt in payout_block['extrinsics']:
 	if xt['method'] == 'staking.payoutStakers' and xt['args']['validator_stash'] == stash:
@@ -38,6 +40,7 @@ for xt in payout_block['extrinsics']:
 				print('Era: {}'.format(call['args']['era']))
 		total_payout = calc_payouts(xt['events'], stash)
 
+# Isolate and retrieve the estimated payout for `stash` in `era`.
 total_estimated_payout = 0
 for e in payout_info['erasPayouts']:
 	this_era = int(e['era'])
@@ -49,5 +52,6 @@ for e in payout_info['erasPayouts']:
 
 print('Total Paid Out:   {}'.format(total_payout))
 
+# Check if the estimate (from `payout-info`) matches the actual (from the block).
 diff = total_payout - total_estimated_payout
 print('Difference: {}'.format(diff))
