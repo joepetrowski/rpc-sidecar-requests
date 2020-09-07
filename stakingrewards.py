@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 from sidecar import Sidecar
 from datetime import datetime
 from pycoingecko import CoinGeckoAPI
@@ -117,8 +118,8 @@ class StakingRewardsLogger(Sidecar):
 					p = self.get_price_on_date(date)
 					value = round(p * payout / self.decimals, 2)
 					print(
-						'Block {}: Staking payout! {} {} | {} USD'
-						.format(bn, payout/self.decimals, self.token, value)
+						'{} Block {}: Staking payout! {} {} | {} USD'
+						.format(date, bn, payout/self.decimals, self.token, value)
 					)
 					self.add_to_totals(bn, month, payout, value)
 
@@ -215,6 +216,12 @@ class StakingRewardsLogger(Sidecar):
 
 if __name__ == '__main__':
 	# Load in addresses that we care about.
+	# Must be a file with addresses as keys and a value that includes the spec name. E.g.:
+	# {
+	#   "address 1": "kusama-stash",
+	#   "address 2": "polkadot-stash",
+	#   "address 3": "polkadot-controller"
+	# }
 	with open('./addresses_stash.json', mode='r') as address_file:
 		addresses = json.loads(address_file.read())
 	
