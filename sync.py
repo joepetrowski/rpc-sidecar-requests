@@ -28,7 +28,10 @@ class Sync:
 		self.blocks = []
 		self.last_block_time = 0
 		self.network = self.get_chain_spec()
-		self.decimals = 1e12
+		if self.network == 'polkadot':
+			self.decimals = 1e10
+		else:
+			self.decimals = 1e12
 
 		print('Connected to Sidecar on the {} network.'.format(self.network))
 
@@ -105,7 +108,7 @@ class Sync:
 		for xt in block['extrinsics']:
 			if xt['method'] == 'timestamp.set':
 				# Block timestamp is in _milliseconds_ since epoch
-				ts = int(xt['newArgs']['now']) / 1000
+				ts = int(xt['args']['now']) / 1000
 				break
 		if ts == 0:
 			print('No time set for block {}'.format(block['number']))
@@ -126,6 +129,10 @@ class Sync:
 		# Log if it's a new day
 		self.log_new_day(block)
 
+		# Log any interesting events from hooks
+		if len(block['onInitialize']['events']) > 0:
+			self.log_events(block['onInitialize']['events'], bn)
+
 		# Log some noteable extrinsics
 		for xt in block['extrinsics']:
 			# Did I get paid, yo
@@ -133,6 +140,12 @@ class Sync:
 				payout = self.check_for_payouts(xt)
 				if payout > 0:
 					print('Block {}: Staking payout! {} tokens'.format(bn, payout / self.decimals))
+
+			if 'equivocation' in xt['method'].lower():
+				print('Block {}: Equivocation Reported'.format(bn))
+				for event in xt['events']:
+					if 'method' in event and event['method'] == 'offences.Offence':
+						self.process_offence(bn, event)
 
 			# Sudo stuff
 			if self.network == 'polkadot' and bn < 799302:
@@ -156,9 +169,6 @@ class Sync:
 			if xt['signature'] and xt['paysFee'] and not fee_error:
 				self.check_deposit_events(xt, bn)
 
-		# Log any interesting events from hooks
-		if len(block['onInitialize']['events']) > 0:
-			self.log_events(block['onInitialize']['events'], bn)
 		if len(block['onFinalize']['events']) > 0:
 			self.log_events(block['onFinalize']['events'], bn)
 
@@ -230,6 +240,21 @@ class Sync:
 					print('Block {}: Code Updated'.format(bn))
 				elif event['method'] == 'session.NewSession':
 					print('Block {}: New Session {}'.format(bn, event['data'][0]))
+				elif event['method'] == 'offences.Offence':
+					self.process_offence(bn, event)
+				elif event['method'] == 'imOnline.SomeOffline':
+					self.process_offline(bn, event)
+				elif event['method'] == 'staking.EraPayout':
+					era = int(event['data'][0])
+					validators = int(event['data'][1]) / self.decimals
+					treasury = int(event['data'][2]) / self.decimals
+					print(
+						'Block {}: Era {} finished\n  Validators: {:,}\n  Treasury:    {:,}'
+						.format(bn, era, validators, treasury)
+					)
+				elif event['method'] == 'grandpa.NewAuthorities':
+					count = len(event['data'][0])
+					print('Block {}: {} new authorities'.format(bn, count))
 
 	# A bunch of asserts to make sure we have a valid block. Make block number an int.
 	def process_block(self, block: dict, bn=None):
@@ -242,6 +267,26 @@ class Sync:
 		if bn:
 			assert(int(block['number']) == bn)
 		return block
+
+	# Process an offence event
+	def process_offence(self, bn, event):
+		kind = str(bytes.fromhex(event['data'][0][2:]), 'utf-8')
+		applied = 'applied'
+		if not event['data'][2]:
+			applied = 'not ' + applied
+		print('Block {}: Offence {} for {}'.format(bn, applied, kind))
+	
+	def process_offline(self, bn, event):
+		for offline_validator in event['data'][0]:
+			stash = offline_validator[0]
+			if stash in self.addresses_of_interest:
+				stash = self.addresses_of_interest[stash]
+			nominations = offline_validator[1]
+			print('Block {}: {} offline'.format(bn, stash))
+			for who in nominations['others']:
+				nominator = who['who']
+				if nominator in self.addresses_of_interest:
+					print('  {} nominating'.format(self.addresses_of_interest[nominator]))
 
 	# Print some info about a block. Mostly used to show that sync is progressing.
 	def print_block_info(self, block: dict):

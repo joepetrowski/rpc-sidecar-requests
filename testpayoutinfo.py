@@ -4,19 +4,25 @@ from sidecar import Sidecar
 s = Sidecar('http://127.0.0.1:8080')
 
 # Stash address of interest. Can be nominator or validator.
-stash = '1A2ATy1FEu5yQ9ZzghPLsRckPQ7XLmq5MJQYcTvGnxGvCho'
+stash = '15dPFENfyioL2UGjZbhzsQJ65rrxD6EXFmL4oqGnAuR7prwT'
 # Era to check payout for.
-era = 82
+era = 77
 # Known Polkadot block with payout_stakers where era was paid out.
-bn = 1287330
+bn = 1118166
 
 payout_info = s.custom(
 	'accounts/' + \
 	stash + \
 	'/staking-payouts?era=' + \
 	str(era) + \
-	'&depth=1&unclaimedOnly=false'
+	'&depth=7&unclaimedOnly=false'
 )
+
+total = 0
+for e in payout_info['erasPayouts']:
+	for p in e['payouts']:
+		total += int(p['nominatorStakingPayout'])
+print('Total: {}'.format(total))
 
 # Calculate payouts for an `address` from an array of `events`.
 def calc_payouts(events, address):
