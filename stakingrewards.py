@@ -118,7 +118,7 @@ class StakingRewardsLogger(Sidecar):
 					p = self.get_price_on_date(date)
 					value = round(p * payout / self.decimals, 2)
 					print(
-						'{} Block {}: Staking payout! {} {} | {} USD'
+						'{} Block {}: Payout of {} {} | {} USD'
 						.format(date, bn, payout/self.decimals, self.token, value)
 					)
 					self.add_to_totals(bn, month, payout, value)
@@ -130,7 +130,7 @@ class StakingRewardsLogger(Sidecar):
 		if 'market_data' in prices:
 			price = prices['market_data']['current_price']['usd']
 		else:
-			print('No price data available on {}'.format(date))
+			# print('No price data available on {}'.format(date))
 			price = 0.0
 		return price
 
@@ -191,12 +191,15 @@ class StakingRewardsLogger(Sidecar):
 		ERASE_LINE = '\x1b[2K'
 		sys.stdout.write(CURSOR_UP_ONE)
 		sys.stdout.write(ERASE_LINE)
+	
+	def find_first_block_of_month(self, month: int):
+		pass
 
 	# The main function.
 	def sync_blocks(self):
 		# To do: implement binary search to take `month` as an argument and find the first and last
 		# block of that month.
-		for bn in range(3414260, 3851275):
+		for bn in range(950000, 1400000):
 			self.process_block(bn)
 
 			# This can be slow, so tell us that we're actually making progress.
@@ -204,15 +207,16 @@ class StakingRewardsLogger(Sidecar):
 				print('At block: {:,}'.format(bn))
 				self.erase_line()
 
-			# Every 3 days worth of blocks, log all the block numbers with payouts. This makes the
+			# Every 5 days worth of blocks, log all the block numbers with payouts. This makes the
 			# console a bit messy, but Sidecar/Kusama node has a bug causing it to fail sometimes
 			# in certain ranges of blocks and requires a restart. Having regular updates helps you
 			# bypass the time consuming searching of every block.
-			if bn % (14400*3) == 0:
+			if bn % (14400*5) == 0:
 				print('Payout blocks: {}'.format(self.payout_blocks))
 
 		# Total up the payouts at the end.
 		self.total_payouts()
+		print('Payout blocks: {}'.format(self.payout_blocks))
 
 if __name__ == '__main__':
 	# Load in addresses that we care about.
