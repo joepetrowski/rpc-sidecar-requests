@@ -35,12 +35,12 @@ class StakingRewardsLogger(Sidecar):
 
 	# Get chain spec name.
 	def get_chain_spec(self):
-		artifacts = self.artifacts()
-		return artifacts['specName']
+		spec_info = self.runtime_spec()
+		return spec_info['specName']
 
 	# Get the block number of the latest finalized block.
 	def get_chain_tip(self):
-		latest_block = self.block()
+		latest_block = self.blocks()
 		chain_height = int(latest_block['number'])
 		return chain_height
 
@@ -48,7 +48,7 @@ class StakingRewardsLogger(Sidecar):
 	def get_block_time(self, block: dict):
 		ts = 0
 		for xt in block['extrinsics']:
-			if xt['method'] == 'timestamp.set':
+			if xt['method']['pallet'] == 'timestamp' and xt['method']['method'] == 'set':
 				# Block timestamp is in _milliseconds_ since epoch
 				ts = int(xt['args']['now']) / 1000
 				break
@@ -73,7 +73,7 @@ class StakingRewardsLogger(Sidecar):
 	def compare_monthly_balances(self, bn: int):
 		for a in self.addresses_of_interest:
 			# Get the balances of the account
-			balances = self.balance(a, bn)
+			balances = self.account_balance_info(a, bn)
 			free = int(balances['free'])
 			reserved = int(balances['reserved'])
 
@@ -92,13 +92,13 @@ class StakingRewardsLogger(Sidecar):
 	# Main function for processing blocks.
 	def process_block(self, block_requested: int):
 		# Get the block
-		block = self.block(block_requested)
+		block = self.blocks(block_requested)
 
 		# Make sure there's no error. If there is, try again.
 		while 'error' in block.keys():
 			print('Error block {}: {}'.format(block_requested, block['error']))
 			time.sleep(60)
-			block = self.block(block_requested)
+			block = self.blocks(block_requested)
 
 		# Handle the block.
 		bn = int(block['number'])
@@ -112,7 +112,7 @@ class StakingRewardsLogger(Sidecar):
 			'staking.payoutValidators'
 		]
 		for xt in block['extrinsics']:
-			if xt['method'] in payout_calls:
+			if xt['method']['pallet']+'.'+xt['method']['method'] in payout_calls:
 				if not xt['events']:
 					print('Block {}: Error decoding events'.format(bn))
 				payout = self.check_for_payouts(xt)
@@ -146,7 +146,8 @@ class StakingRewardsLogger(Sidecar):
 			for event in xt['events']:
 				if (
 					'method' in event
-					and event['method'] == 'staking.Reward'
+					and event['method']['pallet'] == 'staking'
+					and event['method']['method'] == 'Reward'
 					and 'data' in event
 					and event['data'][0] in a.keys()
 				):
