@@ -4,12 +4,14 @@ import json
 from sidecar import Sidecar
 from datetime import datetime
 from pycoingecko import CoinGeckoAPI
+import argparse
 
 class StakingRewardsLogger(Sidecar):
-	def __init__(self, addresses):
+	def __init__(self, inputs):
 		super().__init__('http://127.0.0.1:8080')
 		self.cg = CoinGeckoAPI()
-		self.addresses_of_interest = addresses
+		self.addresses_of_interest = inputs['addresses']
+		self.month = inputs['month']
 		self.last_block_time = 0
 		self.rewards = [
 			[], [], [], [], [], [], [], [], [], [], [], []
@@ -191,15 +193,74 @@ class StakingRewardsLogger(Sidecar):
 		ERASE_LINE = '\x1b[2K'
 		sys.stdout.write(CURSOR_UP_ONE)
 		sys.stdout.write(ERASE_LINE)
-	
-	def find_first_block_of_month(self, month: int):
-		pass
+
+	# Hardcoded lookup table of blocks on Polkadot and Kusama.
+	def look_up_monthly_blocks(self, month: str):
+		y = month[:4]
+		m = month[-2:]
+		if self.network == 'kusama':
+			start_block = 2064961
+			# Only valid from 2064961 (v1058 with simple payouts)
+			# Even better from 2671528 (v2005 without legacy lazy payouts)
+			blocks_by_month = {
+				'2020' : {
+					'03' : 1255489,
+					'04' : 1692602,
+					'05' : 2111318,
+					'06' : 2553304,
+					'07' : 2978427,
+					'08' : 3414276,
+					'09' : 3851274,
+				}
+			}
+		elif self.network == 'polkadot':
+			start_block = 0
+			blocks_by_month = {
+				'2020' : {
+					'05' : 0,
+					'06' : 325148, # Note: actual first block of June is 77028, but staking was not enabled until 325148.
+					'07' : 507735,
+					'08' : 952103,
+					'09' : 1396338,
+				}
+			}
+
+		if y in blocks_by_month and m in blocks_by_month[y]:
+			start_block = blocks_by_month[y][m]
+
+		if self.network == 'kusama' and start_block < 2671528:
+			print(
+				'Warning: Starting below block 2,671,528 on Kusama where payout events did not reference stash address.'
+			)
+		elif self.network == 'polkadot' and start_block < 325148:
+			print(
+				'Note: Starting search below block 325,148. There will not be any reward events as NPoS was not enabled.'
+			)
+
+		if int(m) == 12: # New Year
+			y = str(int(y) + 1)
+			m = '01'
+		else:
+			m = str(int(m) + 1)
+			m = m.zfill(2)
+		if y in blocks_by_month and m in blocks_by_month[y]:
+			end_block = blocks_by_month[y][m] + 2
+		else:
+			print('No block in registry for end of month. Forecasting...')
+			potential_end_block = 31 * 14400 + start_block
+			chain_height = self.get_chain_tip()
+			if potential_end_block > chain_height:
+				print('Still in the requested month. Collecting data up to present.')
+				end_block = chain_height
+			else:
+				end_block = potential_end_block
+		print('Collecting info for {} from block {} to {}'.format(month, start_block, end_block))
+		return start_block, end_block
 
 	# The main function.
 	def sync_blocks(self):
-		# To do: implement binary search to take `month` as an argument and find the first and last
-		# block of that month.
-		for bn in range(950000, 1400000):
+		start, end = self.look_up_monthly_blocks(self.month)
+		for bn in range(start, end):
 			self.process_block(bn)
 
 			# This can be slow, so tell us that we're actually making progress.
@@ -210,7 +271,8 @@ class StakingRewardsLogger(Sidecar):
 			# Every 5 days worth of blocks, log all the block numbers with payouts. This makes the
 			# console a bit messy, but Sidecar/Kusama node has a bug causing it to fail sometimes
 			# in certain ranges of blocks and requires a restart. Having regular updates helps you
-			# bypass the time consuming searching of every block.
+			# bypass the time consuming searching of every block by just pasting in the array of
+			# known blocks to look for before continuing block-by-block search.
 			if bn % (14400*5) == 0:
 				print('Payout blocks: {}'.format(self.payout_blocks))
 
@@ -218,16 +280,36 @@ class StakingRewardsLogger(Sidecar):
 		self.total_payouts()
 		print('Payout blocks: {}'.format(self.payout_blocks))
 
+def parse_args():
+	parser = argparse.ArgumentParser()
+	parser.add_argument(
+		'-s', '--stash',
+		help='Either a single stash address for which to find rewards, or path to JSON file keyed by stash.',
+		type=str,
+		required=True
+	)
+	parser.add_argument(
+		'-m', '--month',
+		help='The month in which to look up rewards. Format \'yyyy-mm\'',
+		type=str,
+		required=True
+	)
+
+	args = parser.parse_args()
+
+	if args.stash[-5:].lower() == '.json':
+		with open(args.stash, mode='r') as address_file:
+			addresses = json.loads(address_file.read())
+	else:
+		addresses = { args.stash: 'provided-address' }
+
+	input_args = {
+		'addresses': addresses,
+		'month': args.month
+	}
+	return input_args
+
 if __name__ == '__main__':
-	# Load in addresses that we care about.
-	# Must be a file with addresses as keys and a value that includes the spec name. E.g.:
-	# {
-	#   "address 1": "kusama-stash",
-	#   "address 2": "polkadot-stash",
-	#   "address 3": "polkadot-controller"
-	# }
-	with open('./addresses_stash.json', mode='r') as address_file:
-		addresses = json.loads(address_file.read())
-	
-	p = StakingRewardsLogger(addresses)
+	input_args = parse_args()
+	p = StakingRewardsLogger(input_args)
 	p.sync_blocks()

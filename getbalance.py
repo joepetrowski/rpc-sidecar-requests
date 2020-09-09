@@ -6,7 +6,7 @@ url = 'http://127.0.0.1:8080'
 s = Sidecar(url)
 
 address = ''
-bal = s.balance(address)
+bal = s.account_balance_info(address)
 free = int(bal['free'])
 reserved = int(bal['reserved'])
 spendable = free - max(int(bal['feeFrozen']), int(bal['miscFrozen']))

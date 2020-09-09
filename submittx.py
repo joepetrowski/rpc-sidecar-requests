@@ -1,17 +1,10 @@
 #%%
-import requests
-import json
+from sidecar import Sidecar
 
-# Submit a serialized transaction.
-# url = 'https://cb-cc1-h6ffqwh0ynup4.paritytech.net/tx/'
-url = 'https://cb-runtime-wk8yx7pds0ag.paritytech.net/tx/'
-tx_headers = {'Content-type' : 'application/json', 'Accept' : 'text/plain'}
-response = requests.post(
-	url,
-	data='{"tx": ""}',
-	headers=tx_headers
-)
+url = 'http://127.0.0.1:8080'
+s = Sidecar(url)
 
-tx_response = json.loads(response.text)
-print(response.status_code)
+tx = '0xc0ffee...'
+
+tx_response = s.transaction(tx)
 print(tx_response)

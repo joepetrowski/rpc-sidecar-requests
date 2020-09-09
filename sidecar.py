@@ -58,6 +58,93 @@ class Sidecar:
 		path = self.endpoint + route
 		return self.sidecar_get(path)
 
+	# v1 paths
+
+	def account_staking_info(self, address, block=None):
+		path = '{}accounts/{}/staking-info'.format(self.endpoint, address)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def account_staking_payouts(self, address, depth=1, era=None, unclaimed_only=None):
+		path = '{}accounts/{}/staking-payouts?depth={}'.format(self.endpoint, address, depth)
+		if era:
+			path += '&era='.format(era)
+		if unclaimed_only:
+			path += '&unclaimedOnly='.format(unclaimed_only)
+		return self.sidecar_get(path)
+
+	def account_balance_info(self, address, block=None):
+		path = '{}accounts/{}/balance-info'.format(self.endpoint, address)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def account_vesting_info(self, address, block=None):
+		path = '{}accounts/{}/vesting-info'.format(self.endpoint, address)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def blocks(self, block='head'):
+		path = '{}blocks/{}'.format(self.endpoint, block)
+		return self.sidecar_get(path)
+
+	def staking_progress(self, block=None):
+		path = '{}pallets/staking/progress'.format(self.endpoint)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def node_network(self):
+		path = '{}node/network'.format(self.endpoint)
+		return self.sidecar_get(path)
+
+	def node_transaction_pool(self):
+		path = '{}node/transaction-pool'.format(self.endpoint)
+		return self.sidecar_get(path)
+
+	def runtime_spec(self, block=None):
+		path = '{}runtime/spec'.format(self.endpoint)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def runtime_code(self, block=None):
+		path = '{}runtime/code'.format(self.endpoint)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def runtime_metadata(self, block=None):
+		path = '{}runtime/metadata'.format(self.endpoint)
+		if block:
+			path += '?at={}'.format(block)
+		return self.sidecar_get(path)
+
+	def transaction(self, transaction):
+		path = '{}transaction/material'.format(self.endpoint)
+		tx_data = '{"tx": "{}"}'.format(transaction)
+		return self.sidecar_post(path, tx_data)
+
+	def transaction_material(self, block=None, noMeta=False):
+		path = '{}transaction/material'.format(self.endpoint)
+		if block and noMeta:
+			path += '?at={}&noMeta=true'.format(block)
+		elif block:
+			path += '?at={}'.format(block)
+		elif noMeta:
+			path += '?noMeta=true'
+		return self.sidecar_get(path)
+
+	def transaction_fee_estimate(self):
+		pass
+
+	def transaction_dry_run(self):
+		pass
+
+	# v0 paths
+
 	def block(self, block_number=None):
 		path = self.construct_url('block', block_number)
 		return self.sidecar_get(path)
