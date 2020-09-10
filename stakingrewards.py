@@ -200,7 +200,7 @@ class StakingRewardsLogger(Sidecar):
 		y = month[:4]
 		m = month[-2:]
 		if self.network == 'kusama':
-			start_block = 2064961
+			start_block = 2671528
 			# Only valid from 2064961 (v1058 with simple payouts)
 			# Even better from 2671528 (v2005 without legacy lazy payouts)
 			blocks_by_month = {
@@ -215,7 +215,7 @@ class StakingRewardsLogger(Sidecar):
 				}
 			}
 		elif self.network == 'polkadot':
-			start_block = 0
+			start_block = 325148
 			blocks_by_month = {
 				'2020' : {
 					'05' : 0,
@@ -225,6 +225,8 @@ class StakingRewardsLogger(Sidecar):
 					'09' : 1396338,
 				}
 			}
+		else:
+			start_block = 0
 
 		if y in blocks_by_month and m in blocks_by_month[y]:
 			start_block = blocks_by_month[y][m]
@@ -244,6 +246,7 @@ class StakingRewardsLogger(Sidecar):
 		else:
 			m = str(int(m) + 1)
 			m = m.zfill(2)
+
 		if y in blocks_by_month and m in blocks_by_month[y]:
 			end_block = blocks_by_month[y][m] + 2
 		else:
