@@ -86,8 +86,20 @@ class Sidecar:
 			path += '?at={}'.format(block)
 		return self.sidecar_get(path)
 
-	def blocks(self, block='head'):
+	def blocks(self, block='head', event_docs=False, extrinsic_docs=False, finalized=True):
 		path = '{}blocks/{}'.format(self.endpoint, block)
+		if event_docs or extrinsic_docs or not finalized:
+			path += '?'
+			if event_docs:
+				path += 'eventDocs=true'
+			if extrinsic_docs:
+				if event_docs:
+					path += '&'
+				path += 'extrinsicDocs=true'
+			if not finalized:
+				if event_docs or extrinsic_docs:
+					path += '&'
+				path += 'finalized=false'
 		return self.sidecar_get(path)
 
 	def staking_progress(self, block=None):
