@@ -21,9 +21,9 @@ class Sidecar:
 		return url
 
 	# Request some data from sidecar.
-	def sidecar_get(self, endpoint):
+	def sidecar_get(self, endpoint, params={}):
 		try:
-			response = requests.get(endpoint)
+			response = requests.get(endpoint, params)
 		except:
 			print('Unable to connect to sidecar.')
 
@@ -62,51 +62,51 @@ class Sidecar:
 
 	def account_staking_info(self, address, block=None):
 		path = '{}accounts/{}/staking-info'.format(self.endpoint, address)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def account_staking_payouts(self, address, depth=1, era=None, unclaimed_only=None):
 		path = '{}accounts/{}/staking-payouts?depth={}'.format(self.endpoint, address, depth)
+		params = {}
 		if era:
-			path += '&era='.format(era)
+			params['era'] = str(era)
 		if unclaimed_only:
-			path += '&unclaimedOnly='.format(unclaimed_only)
-		return self.sidecar_get(path)
+			params['unclaimedOnly'] = unclaimed_only
+		return self.sidecar_get(path, params)
 
 	def account_balance_info(self, address, block=None):
 		path = '{}accounts/{}/balance-info'.format(self.endpoint, address)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def account_vesting_info(self, address, block=None):
 		path = '{}accounts/{}/vesting-info'.format(self.endpoint, address)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def blocks(self, block='head', event_docs=False, extrinsic_docs=False, finalized=True):
 		path = '{}blocks/{}'.format(self.endpoint, block)
-		if event_docs or extrinsic_docs or not finalized:
-			path += '?'
-			if event_docs:
-				path += 'eventDocs=true'
-			if extrinsic_docs:
-				if event_docs:
-					path += '&'
-				path += 'extrinsicDocs=true'
-			if not finalized:
-				if event_docs or extrinsic_docs:
-					path += '&'
-				path += 'finalized=false'
-		return self.sidecar_get(path)
+		params = {}
+		if event_docs:
+			params['eventDocs'] = 'true'
+		if extrinsic_docs:
+			params['extrinsicDocs'] = 'true'
+		if not finalized:
+			params['finalized'] = 'false'
+		return self.sidecar_get(path, params)
 
 	def staking_progress(self, block=None):
 		path = '{}pallets/staking/progress'.format(self.endpoint)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def node_network(self):
 		path = '{}node/network'.format(self.endpoint)
@@ -118,21 +118,24 @@ class Sidecar:
 
 	def runtime_spec(self, block=None):
 		path = '{}runtime/spec'.format(self.endpoint)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def runtime_code(self, block=None):
 		path = '{}runtime/code'.format(self.endpoint)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def runtime_metadata(self, block=None):
 		path = '{}runtime/metadata'.format(self.endpoint)
+		params = {}
 		if block:
-			path += '?at={}'.format(block)
-		return self.sidecar_get(path)
+			params['at'] = str(block)
+		return self.sidecar_get(path, params)
 
 	def transaction(self, transaction):
 		path = '{}transaction/material'.format(self.endpoint)
@@ -141,13 +144,12 @@ class Sidecar:
 
 	def transaction_material(self, block=None, noMeta=False):
 		path = '{}transaction/material'.format(self.endpoint)
-		if block and noMeta:
-			path += '?at={}&noMeta=true'.format(block)
-		elif block:
-			path += '?at={}'.format(block)
-		elif noMeta:
-			path += '?noMeta=true'
-		return self.sidecar_get(path)
+		params = {}
+		if block:
+			params['at'] = str(block)
+		if noMeta:
+			params['noMeta'] = 'true'
+		return self.sidecar_get(path, params)
 
 	def transaction_fee_estimate(self):
 		pass
