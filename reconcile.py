@@ -1,26 +1,12 @@
 #%%
 import requests
 import json
+from sidecar import Sidecar
 
-block = 2621327
-address = 'GTUi6r2LEsf71zEQDnBvBvKskQcWvK66KRqcRbdmcczaadr'
+block = 2998530
+address = 'FdfCk5dtyGcDCAcRHa7CUURkQigRA9ahn2jipyLxqvB8hUU'
 sidecar_url = 'http://127.0.0.1:8080/'
-
-def get_block(sidecar: str, block: int):
-	block_data = {}
-	url = sidecar + 'block/' + str(block)
-	response = requests.get(url)
-	if response.ok:
-		block_data = json.loads(response.text)
-	return block_data
-
-def get_balance(sidecar: str, address: str, block: int):
-	balance = {}
-	url = sidecar + 'balance/' + address + '/' + str(block)
-	response = requests.get(url)
-	if response.ok:
-		balance = json.loads(response.text)
-	return balance
+sidecar = Sidecar(sidecar_url)
 
 def is_signed_by(signature, address):
 	return signature and signature['signer'] == address
@@ -42,6 +28,10 @@ def value_deducted_in_block(block: dict, address: str):
 	]
 	value_transferred = 0
 	for xt in block['extrinsics']:
+		# Credits
+		# if xt['method'] in transfer_methods:
+			# look for transfer event
+		# Check for block author tx fees
 		if is_signed_by(xt['signature'], address):
 			if xt['method'] in transfer_methods:
 				value = int(xt['args'][1])
@@ -66,9 +56,9 @@ def value_reaped(events):
 			reaped += int(event['data'][1])
 	return reaped
 
-balances_before_tx = get_balance(sidecar_url, address, block-1)
-balances_after_tx = get_balance(sidecar_url, address, block)
-block_data = get_block(sidecar_url, block)
+balances_before_tx = sidecar.balance(address, block-1)
+balances_after_tx = sidecar.balance(address, block)
+block_data = sidecar.block(block)
 
 pre_tx_free_balance = int(balances_before_tx['free'])
 pre_tx_reserved_balance = int(balances_before_tx['reserved'])
