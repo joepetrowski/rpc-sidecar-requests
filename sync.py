@@ -7,13 +7,14 @@ import requests
 import json
 import time
 from datetime import datetime
+from sidecar import Sidecar
 import pickle
 import argparse
 
-class Sync:
+class Sync():
 	def __init__(self, inputs):
+		self.sidecar = Sidecar(inputs['endpoint'])
 		# User inputs
-		self.endpoint = inputs['endpoint']
 		self.write = inputs['write']
 		self.use_json = inputs['use_json']
 		self.start_block = inputs['start_block']
@@ -41,72 +42,43 @@ class Sync:
 			assert(self.end_block > self.start_block)
 		if self.end_block == 0:
 			self.end_block = self.get_chain_height()
-		if self.endpoint[-1] != '/':
-			self.endpoint = self.endpoint + '/'
-	
+
 	def get_chain_spec(self):
-		url = self.construct_url('tx', 'artifacts')
-		artifacts = self.sidecar_request(url)
-		return artifacts['specName']
-
-	# Construct a path to some sidecar info.
-	def construct_url(self, path=None, param1=None, param2=None):
-		base_url = self.endpoint
-		if path:
-			url = base_url + str(path)
-			if param1 or param1 == 0:
-				url = url + '/' + str(param1)
-				if param2 or param2 == 0:
-					url = url + '/' + str(param2)
-		return url
-
-	# Request some data from sidecar.
-	def sidecar_request(self, endpoint):
-		try:
-			response = requests.get(endpoint)
-		except:
-			print('Unable to connect to sidecar. Pausing for 30 seconds.')
-			time.sleep(30)
-			self.erase_line()
-			return { 'error' : 'Unable to connect to sidecar.' }
-
-		data = {}
-		if response.ok:
-			data = json.loads(response.text)
-		else:
-			error_message = 'Response Error: {}'.format(response.status_code)
-			print(error_message)
-			data = { 'error' : error_message }
-		return data
+		spec_info = self.sidecar.runtime_spec()
+		return spec_info['specName']
 
 	# Get the block number of the current finalized head.
 	def get_chain_height(self):
-		url = self.construct_url('block')
-		latest_block = self.sidecar_request(url)
-		while 'error' in latest_block.keys():
-			latest_block = self.sidecar_request(url)
-		latest_block = self.process_block(latest_block)
+		latest_block = self.fetch_block('head')
 		chain_height = latest_block['number']
 		return chain_height
 
 	# Fetch a block, make sure it has all the things we think it should have, and log any
 	# interesting events or transactions.
-	def fetch_block(self, number: int):
-		url = self.construct_url('block', number)
-		block = self.sidecar_request(url)
+	def fetch_block(self, number):
+		try:
+			block = self.sidecar.blocks(number)
+		except:
+			print('Fetch block: Unable to connect to sidecar. Pausing for 30 seconds.')
+			time.sleep(30)
+			self.erase_line()
+			return self.fetch_block(number)
+		
 		if 'error' in block.keys():
 			print('Warn! Bad response from client on block {}.'.format(number))
 			print('Error message: {}'.format(block['error']))
 			return { 'error' : 'No block.' }
+		
 		block = self.process_block(block)
-		self.log_noteworthy(block)
+		if number != 'head':
+			self.log_noteworthy(block)
 		return block
 
 	# Get the UNIX time of a block.
 	def get_block_time(self, block: dict):
 		ts = 0
 		for xt in block['extrinsics']:
-			if xt['method'] == 'timestamp.set':
+			if self.concat_method(xt['method']) == 'timestamp.set':
 				# Block timestamp is in _milliseconds_ since epoch
 				ts = int(xt['args']['now']) / 1000
 				break
@@ -123,6 +95,12 @@ class Sync:
 		if this_block_date > last_block_date and len(self.blocks) > 0:
 			print('Block {}: First block of {}'.format(block['number'], this_block_date))
 
+	def concat_method(self, method: dict):
+		m = ''
+		if 'pallet' in method and 'method' in method:
+			m = method['pallet'] + '.' + method['method']
+		return m
+
 	# Lots of interesting checks to perform on each block.
 	def log_noteworthy(self, block: dict):
 		bn = block['number']
@@ -135,13 +113,14 @@ class Sync:
 
 		# Log some noteable extrinsics
 		for xt in block['extrinsics']:
+			method = self.concat_method(xt['method'])
 			# Did I get paid, yo
-			if xt['method'] == 'staking.payoutStakers' or xt['method'] == 'utility.batch':
+			if method == 'staking.payoutStakers' or method == 'utility.batch':
 				payout = self.check_for_payouts(xt)
 				if payout > 0:
 					print('Block {}: Staking payout! {} tokens'.format(bn, payout / self.decimals))
 
-			if 'equivocation' in xt['method'].lower():
+			if 'equivocation' in method.lower():
 				print('Block {}: Equivocation Reported'.format(bn))
 				for event in xt['events']:
 					if 'method' in event and event['method'] == 'offences.Offence':
@@ -152,17 +131,17 @@ class Sync:
 				# Did the proxy sudo account make a transaction
 				proxy = '14TKt6bUNjKJdfYqVDNFBqzDAwmJ7WaQwfUmxmizJHHrr1Gs'
 				if xt['signature'] and xt['signature']['signer'] == proxy:
-					print('Block {}: Sudo Proxy Alert! {}'.format(bn, xt['method']))
+					print('Block {}: Sudo Proxy Alert! {}'.format(bn, method))
 
 				# Did the sudo account make a transaction
 				sudo = '1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw'
 				if xt['signature'] and xt['signature']['signer'] == sudo:
-					print('Block {}: Sudo Alert! {}'.format(bn, xt['method']))
+					print('Block {}: Sudo Alert! {}'.format(bn, method))
 
 			# Did sidecar fail to get transaction fees
 			fee_error = False
 			if 'error' in xt['info']:
-				print('Block {}: Fee error on {}'.format(bn, xt['method']))
+				print('Block {}: Fee error on {}'.format(bn, method))
 				fee_error = True
 
 			# Fees brainstorming
@@ -201,7 +180,7 @@ class Sync:
 	def count_events(self, events: list, method: str):
 		count = 0
 		for e in events:
-			if 'method' in e.keys() and e['method'] == method:
+			if self.concat_method(e['method']) == method:
 				count += 1
 		return count
 	
@@ -209,7 +188,7 @@ class Sync:
 	def get_deposit_value(self, events: list, pallet: str):
 		v = 0
 		for e in events:
-			if e['method'] == pallet + '.Deposit':
+			if e['method']['pallet'] == pallet and e['method']['method'] == 'Deposit':
 				v = int(e['data'][-1])
 		return v
 
@@ -223,7 +202,8 @@ class Sync:
 			for event in xt['events']:
 				if (
 					'method' in event
-					and event['method'] == 'staking.Reward'
+					and event['method']['pallet'] == 'staking'
+					and event['method']['method'] == 'Reward'
 					and 'data' in event
 					and event['data'][0] in a.keys()
 				):
@@ -234,17 +214,18 @@ class Sync:
 	def log_events(self, events: list, bn: int):
 		for event in events:
 			if 'method' in event:
-				if event['method'] == 'scheduler.Dispatched':
+				m = self.concat_method(event['method'])
+				if m == 'scheduler.Dispatched':
 					print('Block {}: Scheduler Dispatched {}'.format(bn, event['data'][1]))
-				elif event['method'] == 'system.CodeUpdated':
+				elif m == 'system.CodeUpdated':
 					print('Block {}: Code Updated'.format(bn))
-				elif event['method'] == 'session.NewSession':
+				elif m == 'session.NewSession':
 					print('Block {}: New Session {}'.format(bn, event['data'][0]))
-				elif event['method'] == 'offences.Offence':
+				elif m == 'offences.Offence':
 					self.process_offence(bn, event)
-				elif event['method'] == 'imOnline.SomeOffline':
+				elif m == 'imOnline.SomeOffline':
 					self.process_offline(bn, event)
-				elif event['method'] == 'staking.EraPayout':
+				elif m == 'staking.EraPayout':
 					era = int(event['data'][0])
 					validators = int(event['data'][1]) / self.decimals
 					treasury = int(event['data'][2]) / self.decimals
@@ -252,7 +233,7 @@ class Sync:
 						'Block {}: Era {} finished\n  Validators: {:,}\n  Treasury:    {:,}'
 						.format(bn, era, validators, treasury)
 					)
-				elif event['method'] == 'grandpa.NewAuthorities':
+				elif m == 'grandpa.NewAuthorities':
 					count = len(event['data'][0])
 					print('Block {}: {} new authorities'.format(bn, count))
 
