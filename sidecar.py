@@ -157,50 +157,50 @@ class Sidecar:
 
 	# v0 paths
 
-	def block(self, block_number=None):
+	def v0_block(self, block_number=None):
 		path = self.construct_url('block', block_number)
 		return self.sidecar_get(path)
 
-	def balance(self, address, block_number=None):
+	def v0_balance(self, address, block_number=None):
 		path = self.construct_url('balance', address, block_number)
 		return self.sidecar_get(path)
 
-	def payout(self, address, block_number=None):
+	def v0_payout(self, address, block_number=None):
 		path = self.construct_url('payout', address, block_number)
 		return self.sidecar_get(path)
 
-	def staking(self, address, block_number=None):
+	def v0_staking(self, address, block_number=None):
 		path = self.construct_url('staking', address, block_number)
 		return self.sidecar_get(path)
 
-	def staking_info(self, block_number=None):
+	def v0_staking_info(self, block_number=None):
 		path = self.construct_url('staking-info', block_number)
 		return self.sidecar_get(path)
 
-	def vesting(self, address, block_number=None):
+	def v0_vesting(self, address, block_number=None):
 		path = self.construct_url('vesting', address, block_number)
 		return self.sidecar_get(path)
 
-	def metadata(self, block_number=None):
+	def v0_metadata(self, block_number=None):
 		path = self.construct_url('metadata', block_number)
 		return self.sidecar_get(path)
 
-	def claims(self, address, block_number=None):
+	def v0_claims(self, address, block_number=None):
 		path = self.construct_url('claims', address, block_number)
 		return self.sidecar_get(path)
 
-	def artifacts(self, block_number=None):
+	def v0_artifacts(self, block_number=None):
 		path = self.construct_url('tx', 'artifacts', block_number)
 		return self.sidecar_get(path)
 
-	def submit_tx(self, tx):
+	def v0_submit_tx(self, tx):
 		path = self.construct_url('tx')
 		tx_data = '{"tx": "{}"}'.format(tx_data)
 		return self.sidecar_post(path, tx_data)
 
 if __name__ == "__main__":
-	sidecar = Sidecar('http://127.0.0.1:8080/')
-	latest_block = sidecar.block()
+	s = Sidecar('http://127.0.0.1:8080/')
+	latest_block = s.blocks()
 	if 'number' in latest_block.keys():
 		print('Connected to Sidecar! Current block height is {:,}'
 			.format(int(latest_block['number'])))
