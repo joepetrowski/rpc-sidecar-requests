@@ -35,7 +35,7 @@ class StakingRewardsLogger(Sidecar):
 			self.decimals = 1e12
 			self.token = 'KSM'
 		else:
-			self.decimals = 1e12
+			self.decimals = 1 # just show planks
 			self.token = 'DEV'
 
 	# Get chain spec name.
@@ -235,6 +235,7 @@ class StakingRewardsLogger(Sidecar):
 			}
 		else:
 			start_block = 0
+			blocks_by_month = { '1900' : { '00' : 0 } }
 
 		if y in blocks_by_month and m in blocks_by_month[y]:
 			start_block = blocks_by_month[y][m]
