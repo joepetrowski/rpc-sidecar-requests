@@ -8,18 +8,25 @@ import argparse
 
 class StakingRewardsLogger(Sidecar):
 	def __init__(self, inputs):
-		super().__init__('http://127.0.0.1:8080')
+		# APIs
+		super().__init__(inputs['endpoint'])
 		self.cg = CoinGeckoAPI()
+
+		# Inputs
 		self.addresses_of_interest = inputs['addresses']
 		self.month = inputs['month']
+
+		# Data structures
 		self.last_block_time = 0
-		self.rewards = [
-			[], [], [], [], [], [], [], [], [], [], [], []
-		]
-		self.payout_blocks = [
-			[], [], [], [], [], [], [], [], [], [], [], []
-		]
+		self.rewards = [[], [], [], [], [], [], [], [], [], [], [], []]
 		self.monthly_balances = {}
+		for a in self.addresses_of_interest:
+			self.monthly_balances[a] = []
+		self.months = [
+			'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+		]
+
+		# Network specific
 		self.network = self.get_chain_spec()
 		if self.network == 'polkadot':
 			self.decimals = 1e10
@@ -30,8 +37,6 @@ class StakingRewardsLogger(Sidecar):
 		else:
 			self.decimals = 1e12
 			self.token = 'DEV'
-		for a in self.addresses_of_interest:
-			self.monthly_balances[a] = []
 
 	# Get chain spec name.
 	def get_chain_spec(self):
@@ -56,17 +61,18 @@ class StakingRewardsLogger(Sidecar):
 			print('No time set for block {}'.format(block['number']))
 		return ts
 
-	# If this is the first block of a new (UTC) day, log it.
+	# If this is the first block of a new month, log it.
 	def log_new_month(self, block: dict):
 		this_block_time = self.get_block_time(block)
 		last_block_date = datetime.utcfromtimestamp(self.last_block_time).strftime('%Y-%m-%d')
 		this_block_date = datetime.utcfromtimestamp(this_block_time).strftime('%Y-%m-%d')
-		self.last_block_time = this_block_time
 		month = int(this_block_date[-5:-3])
 		if this_block_date[:-3] > last_block_date[:-3]:
-			self.compare_monthly_balances(int(block['number']))
-			self.month_payout(month - 1)
+			if self.last_block_time > 0:
+				self.compare_monthly_balances(int(block['number']))
+				self.month_payout(month - 1)
 			print('Block {}: First block of {}'.format(block['number'], this_block_date))
+		self.last_block_time = this_block_time
 		return this_block_date
 
 	# Compare balances at start and end of a month.
@@ -103,7 +109,7 @@ class StakingRewardsLogger(Sidecar):
 		# Handle the block.
 		bn = int(block['number'])
 		date = self.log_new_month(block)
-		
+
 		month = int(date[-5:-3])
 		payout_calls = [
 			'staking.payoutStakers',
@@ -132,13 +138,13 @@ class StakingRewardsLogger(Sidecar):
 		if 'market_data' in prices:
 			price = prices['market_data']['current_price']['usd']
 		else:
-			# print('No price data available on {}'.format(date))
+			# Just assuming here that this date is before trading.
 			price = 0.0
 		return price
 
 	# Add some addresses that we're interested in and see if they received any staking rewards.
-	# Note: does not associate rewards with address. Generally only useful if the list of addresses
-	# is e.g. one for Polkadot, one for Kusama, etc.
+	# Note: does not associate rewards with address. As in, it gives the total rewards of all
+	# addresses in aggregate.
 	def check_for_payouts(self, xt: dict):
 		a = self.addresses_of_interest
 		payout = 0
@@ -158,13 +164,10 @@ class StakingRewardsLogger(Sidecar):
 	def add_to_totals(self, bn: int, month: int, payout: int, value: float):
 		month -= 1
 		self.rewards[month].append((bn, payout, value))
-		self.payout_blocks[month].append(bn)
 
 	# Calculate total payouts for a month.
 	def month_payout(self, month: int):
-		months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 		month -= 1
-		m = months[month]
 		r = self.rewards[month]
 		tokens = 0
 		dollars = 0.0
@@ -172,14 +175,12 @@ class StakingRewardsLogger(Sidecar):
 			total = [sum(p) for p in zip(*r)]
 			tokens = total[1] / self.decimals
 			dollars = round(total[2], 2)
-		print('\n{}: {} {}, {} USD\n'.format(m, tokens, self.token, dollars))
+		print('\n{}: {} {}, {} USD\n'.format(self.months[month], tokens, self.token, dollars))
 
 	# Calculate total payouts for all months.
 	def total_payouts(self):
-		months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 		print('\n')
 		for ii in range(len(self.rewards)):
-			m = months[ii]
 			tokens = 0
 			dollars = 0.0
 			r = self.rewards[ii]
@@ -187,7 +188,14 @@ class StakingRewardsLogger(Sidecar):
 				total = [sum(p) for p in zip(*r)]
 				tokens = total[1] / self.decimals
 				dollars = round(total[2], 2)
-			print('{}: {} {}, {} USD'.format(m, tokens, self.token, dollars))
+			print('{}: {} {}, {} USD'.format(self.months[ii], tokens, self.token, dollars))
+
+	def print_payout_blocks(self):
+		for ii in range(len(self.rewards)):
+			r = self.rewards[ii]
+			if len(r) > 0:
+				reward_blocks = [list(p) for p in zip(*r)][0]
+				print('{}: {}'.format(self.months[ii], reward_blocks))
 
 	def erase_line(self):
 		CURSOR_UP_ONE = '\x1b[1A'
@@ -248,7 +256,7 @@ class StakingRewardsLogger(Sidecar):
 			m = m.zfill(2)
 
 		if y in blocks_by_month and m in blocks_by_month[y]:
-			end_block = blocks_by_month[y][m] + 2
+			end_block = blocks_by_month[y][m] + 1
 		else:
 			print('No block in registry for end of month. Forecasting...')
 			potential_end_block = 31 * 14400 + start_block
@@ -258,7 +266,7 @@ class StakingRewardsLogger(Sidecar):
 				end_block = chain_height
 			else:
 				end_block = potential_end_block
-		print('Collecting info for {} from block {} to {}'.format(month, start_block, end_block))
+		print('Collecting info for {} from block {} to {}\n'.format(month, start_block, end_block))
 		return start_block, end_block
 
 	# The main function.
@@ -278,11 +286,11 @@ class StakingRewardsLogger(Sidecar):
 			# bypass the time consuming searching of every block by just pasting in the array of
 			# known blocks to look for before continuing block-by-block search.
 			if bn % (14400*5) == 0:
-				print('Payout blocks: {}'.format(self.payout_blocks))
+				self.print_payout_blocks()
 
 		# Total up the payouts at the end.
 		self.total_payouts()
-		print('Payout blocks: {}'.format(self.payout_blocks))
+		self.print_payout_blocks()
 
 def parse_args():
 	parser = argparse.ArgumentParser()
@@ -298,6 +306,12 @@ def parse_args():
 		type=str,
 		required=True
 	)
+	parser.add_argument(
+		'--sidecar',
+		help='Endpoint for Sidecar.',
+		type=str,
+		default='http://127.0.0.1:8080/'
+	)
 
 	args = parser.parse_args()
 
@@ -309,7 +323,8 @@ def parse_args():
 
 	input_args = {
 		'addresses': addresses,
-		'month': args.month
+		'month': args.month,
+		'endpoint' : args.sidecar
 	}
 	return input_args
 
