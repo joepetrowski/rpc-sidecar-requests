@@ -221,6 +221,7 @@ class StakingRewardsLogger(Sidecar):
 					'08' : 3414276,
 					'09' : 3851274,
 					'10' : 4279102,
+					'11' : 4721520,
 				}
 			}
 		elif self.network == 'polkadot':
@@ -233,6 +234,7 @@ class StakingRewardsLogger(Sidecar):
 					'08' : 952103,
 					'09' : 1396338,
 					'10' : 1826891,
+					'11' : 2271310,
 				}
 			}
 		else:
