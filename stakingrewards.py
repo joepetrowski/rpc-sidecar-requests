@@ -101,35 +101,25 @@ class StakingRewardsLogger(Sidecar):
 		block = self.blocks(block_requested)
 
 		# Make sure there's no error. If there is, try again.
-		while 'error' in block.keys():
+		if 'error' in block.keys():
 			print('Error block {}: {}'.format(block_requested, block['error']))
-			time.sleep(60)
-			block = self.blocks(block_requested)
+			# time.sleep(60)
+			# block = self.blocks(block_requested)
+		else:
+			# Handle the block.
+			bn = int(block['number'])
+			date = self.log_new_month(block)
 
-		# Handle the block.
-		bn = int(block['number'])
-		date = self.log_new_month(block)
+			# Get author address and compare with addresses of interest
+			fees = self.check_for_fees(block)
 
-		month = int(date[-5:-3])
-		payout_calls = [
-			'staking.payoutStakers',
-			'utility.batch',
-			'staking.payoutNominators',
-			'staking.payoutValidators'
-		]
-		for xt in block['extrinsics']:
-			if xt['method']['pallet']+'.'+xt['method']['method'] in payout_calls:
+			for xt in block['extrinsics']:
 				if not xt['events']:
 					print('Block {}: Error decoding events'.format(bn))
 				payout = self.check_for_payouts(xt)
-				if payout > 0:
-					p = self.get_price_on_date(date)
-					value = round(p * payout / self.decimals, 2)
-					print(
-						'{} Block {}: Payout of {} {} | {} USD'
-						.format(date, bn, payout/self.decimals, self.token, value)
-					)
-					self.add_to_totals(bn, month, payout, value)
+			
+			if fees + payout > 0:
+				self.add_value_to_totals(date, bn, fees + payout)
 
 	# Use CoinGecko API to get price of token on a specific date.
 	def get_price_on_date(self, date):
@@ -141,6 +131,38 @@ class StakingRewardsLogger(Sidecar):
 			# Just assuming here that this date is before trading.
 			price = 0.0
 		return price
+
+	# Add any rewards to totals.
+	def add_value_to_totals(self, date, bn, token_quantity):
+		month = int(date[-5:-3])
+		p = self.get_price_on_date(date)
+		value = round(p * token_quantity / self.decimals, 2)
+		print(
+			'{} Block {}: Payout of {} {} | {} USD'
+			.format(date, bn, token_quantity/self.decimals, self.token, value)
+		)
+		self.add_to_totals(bn, month, token_quantity, value)
+
+	# In case the stash addresses are validators, check for transaction fees.
+	def check_for_fees(self, block):
+		fees = 0
+		author = block['authorId']
+		if author in self.addresses_of_interest:
+			print('Authored block! {} by {}'.format(
+				block['number'],
+				self.addresses_of_interest[author])
+			)
+			for xt in block['extrinsics']:
+				for event in xt['events']:
+					if (
+						'method' in event
+						and event['method']['pallet'] == 'balances'
+						and event['method']['method'] == 'Deposit'
+						and 'data' in event
+						and event['data'][0] == author
+					):
+						fees += int(event['data'][1])
+		return fees
 
 	# Add some addresses that we're interested in and see if they received any staking rewards.
 	# Note: does not associate rewards with address. As in, it gives the total rewards of all
@@ -277,21 +299,13 @@ class StakingRewardsLogger(Sidecar):
 	# The main function.
 	def sync_blocks(self):
 		start, end = self.look_up_monthly_blocks(self.month)
-		for bn in range(start, end):
+		for bn in range(4701520, 4731520):
 			self.process_block(bn)
 
 			# This can be slow, so tell us that we're actually making progress.
 			if bn % 100 == 0:
 				print('At block: {:,}'.format(bn))
 				self.erase_line()
-
-			# Every 5 days worth of blocks, log all the block numbers with payouts. This makes the
-			# console a bit messy, but Sidecar/Kusama node has a bug causing it to fail sometimes
-			# in certain ranges of blocks and requires a restart. Having regular updates helps you
-			# bypass the time consuming searching of every block by just pasting in the array of
-			# known blocks to look for before continuing block-by-block search.
-			if bn % (14400*5) == 0:
-				self.print_payout_blocks()
 
 		# Total up the payouts at the end.
 		self.total_payouts()
