@@ -299,7 +299,7 @@ class StakingRewardsLogger(Sidecar):
 	# The main function.
 	def sync_blocks(self):
 		start, end = self.look_up_monthly_blocks(self.month)
-		for bn in range(4701520, 4731520):
+		for bn in range(start, end):
 			self.process_block(bn)
 
 			# This can be slow, so tell us that we're actually making progress.
