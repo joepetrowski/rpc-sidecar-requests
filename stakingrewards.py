@@ -227,8 +227,6 @@ class StakingRewardsLogger(Sidecar):
 
 	# Hardcoded lookup table of blocks on Polkadot and Kusama.
 	def look_up_monthly_blocks(self, month: str):
-		y = month[:4]
-		m = month[-2:]
 		if self.network == 'kusama':
 			start_block = 2671528
 			# Only valid from 2064961 (v1058 with simple payouts)
@@ -262,6 +260,19 @@ class StakingRewardsLogger(Sidecar):
 		else:
 			start_block = 0
 			blocks_by_month = { '1900' : { '00' : 0 } }
+		
+		if month == 'all':
+			if self.network == 'kusama':
+				print('Returning all data from June 2020 to present due to historical incompatibility.')
+				return blocks_by_month['2020']['06'], self.get_chain_tip()
+			elif self.network == 'polkadot':
+				print('Returning all data from June 2020 when staking was enabled.')
+				return 325148, self.get_chain_tip()
+			else:
+				return 0, self.get_chain_tip()
+
+		y = month[:4]
+		m = month[-2:]
 
 		if y in blocks_by_month and m in blocks_by_month[y]:
 			start_block = blocks_by_month[y][m]
@@ -321,7 +332,7 @@ def parse_args():
 	)
 	parser.add_argument(
 		'-m', '--month',
-		help='The month in which to look up rewards. Format \'yyyy-mm\'',
+		help='The month in which to look up rewards. Format \'yyyy-mm\' or \'all\'',
 		type=str,
 		required=True
 	)
