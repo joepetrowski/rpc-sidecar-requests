@@ -1,6 +1,7 @@
 import sys
 import time
 import json
+import os.path
 from sidecar import Sidecar
 from datetime import datetime
 from pycoingecko import CoinGeckoAPI
@@ -15,6 +16,7 @@ class StakingRewardsLogger(Sidecar):
 		# Inputs
 		self.addresses_of_interest = inputs['addresses']
 		self.month = inputs['month']
+		self.store_blocks = inputs['storage']
 
 		# Data structures
 		self.last_block_time = 0
@@ -37,6 +39,10 @@ class StakingRewardsLogger(Sidecar):
 		else:
 			self.decimals = 1 # just show planks
 			self.token = 'DEV'
+		
+		# Create storage directory if it doesn't exist yet
+		if self.store_blocks and not os.path.isdir('blocks/{}'.format(self.network)):
+			os.makedirs('blocks/{}'.format(self.network))
 
 	# Get chain spec name.
 	def get_chain_spec(self):
@@ -95,10 +101,26 @@ class StakingRewardsLogger(Sidecar):
 					.format(a, free_diff, reserved_diff)
 				)
 
+	def fetch_block(self, block_requested: int):
+		fname = 'blocks/{}/block-{}.json'.format(self.network, block_requested)
+		# Check if we have the block saved and can read it in.
+		if os.path.isfile(fname):
+			# read the file
+			with open(fname, 'r') as f:
+				block = json.loads(f.read())
+		else:
+			# fetch the block from sidecar
+			block = self.blocks(block_requested)
+			if self.store_blocks and 'error' not in block.keys():
+				# write the file so it's there next time
+				with open(fname, 'w') as f:
+					json.dump(block, f, indent=2)
+		return block
+
 	# Main function for processing blocks.
 	def process_block(self, block_requested: int):
 		# Get the block
-		block = self.blocks(block_requested)
+		block = self.fetch_block(block_requested)
 
 		# Make sure there's no error. If there is, try again.
 		if 'error' in block.keys():
@@ -342,6 +364,11 @@ def parse_args():
 		type=str,
 		default='http://127.0.0.1:8080/'
 	)
+	parser.add_argument(
+		'--no-storage',
+		help='Do not store blocks on disk for faster retrieval later.',
+		action='store_false'
+	)
 
 	args = parser.parse_args()
 
@@ -354,7 +381,8 @@ def parse_args():
 	input_args = {
 		'addresses': addresses,
 		'month': args.month,
-		'endpoint' : args.sidecar
+		'endpoint': args.sidecar,
+		'storage': args.no_storage 
 	}
 	return input_args
 
