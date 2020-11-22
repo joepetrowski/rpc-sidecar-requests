@@ -122,11 +122,9 @@ class StakingRewardsLogger(Sidecar):
 		# Get the block
 		block = self.fetch_block(block_requested)
 
-		# Make sure there's no error. If there is, try again.
+		# Make sure there's no error. If there is, note it.
 		if 'error' in block.keys():
 			print('Error block {}: {}'.format(block_requested, block['error']))
-			# time.sleep(60)
-			# block = self.blocks(block_requested)
 		else:
 			# Handle the block.
 			bn = int(block['number'])
