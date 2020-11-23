@@ -4,8 +4,7 @@ blocks/*
 *.zip
 *.pickle
 __pycache__
-addresses.json
-addresses_stash.json
+*.json
 web3_stash.json
-blocks.md
+blocks.py
 checkmeta.py
