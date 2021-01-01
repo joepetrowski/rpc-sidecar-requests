@@ -263,7 +263,10 @@ class StakingRewardsLogger(Sidecar):
 					'10' : 4279102,
 					'11' : 4720924,
 					'12' : 5142315,
-				}
+				},
+				'2021' : {
+					'01' : 5578732,
+				},
 			}
 		elif self.network == 'polkadot':
 			start_block = 325148
@@ -277,7 +280,10 @@ class StakingRewardsLogger(Sidecar):
 					'10' : 1826891,
 					'11' : 2270711,
 					'12' : 2700565,
-				}
+				},
+				'2021' : {
+					'01' : 3144988,
+				},
 			}
 		else:
 			start_block = 0
