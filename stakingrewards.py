@@ -16,6 +16,8 @@ class StakingRewardsLogger(Sidecar):
 		# Inputs
 		self.addresses_of_interest = inputs['addresses']
 		self.month = inputs['month']
+		self.start_block = inputs['start_block']
+		self.end_block = inputs['end_block']
 		self.store_blocks = inputs['storage']
 
 		# Data structures
@@ -144,7 +146,12 @@ class StakingRewardsLogger(Sidecar):
 	# Use CoinGecko API to get price of token on a specific date.
 	def get_price_on_date(self, date):
 		date_for_cg = date[-2:] + '-' + date[-5:-3] + '-' + date[0:4] # dd-mm-yyyy
-		prices = self.cg.get_coin_history_by_id(self.network, date_for_cg)
+		try:
+			prices = self.cg.get_coin_history_by_id(self.network, date_for_cg)
+		except:
+			print('CoinGecko price API failure.')
+			price = 0.0
+
 		if 'market_data' in prices:
 			price = prices['market_data']['current_price']['usd']
 		else:
@@ -266,6 +273,8 @@ class StakingRewardsLogger(Sidecar):
 				},
 				'2021' : {
 					'01' : 5578732,
+					'02' : 6015486,
+					'03' : 6410849,
 				},
 			}
 		elif self.network == 'polkadot':
@@ -283,6 +292,8 @@ class StakingRewardsLogger(Sidecar):
 				},
 				'2021' : {
 					'01' : 3144988,
+					'02' : 3589593,
+					'03' : 3991450,
 				},
 			}
 		else:
@@ -298,6 +309,15 @@ class StakingRewardsLogger(Sidecar):
 				return 325148, self.get_chain_tip()
 			else:
 				return 0, self.get_chain_tip()
+		elif month == 'blockrange':
+			if self.end_block == -1:
+				end_block = self.get_chain_tip()
+			elif self.end_block < self.start_block:
+				print('End block must be greater than start block. Going to chain tip.')
+				end_block = self.get_chain_tip()
+			else:
+				end_block = self.end_block
+			return self.start_block, end_block
 
 		y = month[:4]
 		m = month[-2:]
@@ -360,9 +380,21 @@ def parse_args():
 	)
 	parser.add_argument(
 		'-m', '--month',
-		help='The month in which to look up rewards. Format \'yyyy-mm\' or \'all\'',
+		help='The month in which to look up rewards. Format \'yyyy-mm\', \'blockrange\', or \'all\'',
 		type=str,
 		required=True
+	)
+	parser.add_argument(
+		'--startblock',
+		help='Block on which to start collection.',
+		type=str,
+		default='-1'
+	)
+	parser.add_argument(
+		'--endblock',
+		help='Block on which to end collection. If none is provided, it will collect until the chain tip.',
+		type=str,
+		default='-1'
 	)
 	parser.add_argument(
 		'--sidecar',
@@ -384,9 +416,14 @@ def parse_args():
 	else:
 		addresses = { args.stash: 'provided-address' }
 
+	if args.month == 'blockrange':
+		assert(int(args.startblock) >= 0)
+
 	input_args = {
 		'addresses': addresses,
 		'month': args.month,
+		'start_block': int(args.startblock),
+		'end_block': int(args.endblock),
 		'endpoint': args.sidecar,
 		'storage': args.no_storage 
 	}
