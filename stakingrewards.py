@@ -150,7 +150,7 @@ class StakingRewardsLogger(Sidecar):
 			prices = self.cg.get_coin_history_by_id(self.network, date_for_cg)
 		except:
 			print('CoinGecko price API failure.')
-			price = 0.0
+			return 0.0
 
 		if 'market_data' in prices:
 			price = prices['market_data']['current_price']['usd']
