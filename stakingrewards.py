@@ -135,13 +135,14 @@ class StakingRewardsLogger(Sidecar):
 			# Get author address and compare with addresses of interest
 			fees = self.check_for_fees(block)
 
+			block_rewards = 0
 			for xt in block['extrinsics']:
 				if not xt['events']:
 					print('Block {}: Error decoding events'.format(bn))
-				payout = self.check_for_payouts(xt)
+				block_rewards += self.check_for_payouts(xt)
 			
-			if fees + payout > 0:
-				self.add_value_to_totals(date, bn, fees + payout)
+			if fees + block_rewards > 0:
+				self.add_value_to_totals(date, bn, fees + block_rewards)
 
 	# Use CoinGecko API to get price of token on a specific date.
 	def get_price_on_date(self, date):
