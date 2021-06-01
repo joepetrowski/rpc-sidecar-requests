@@ -12,6 +12,7 @@ class StakingRewardsLogger(Sidecar):
 		# APIs
 		super().__init__(inputs['endpoint'])
 		self.cg = CoinGeckoAPI()
+		self.last_cg_time = time.time()
 
 		# Inputs
 		self.addresses_of_interest = inputs['addresses']
@@ -147,6 +148,13 @@ class StakingRewardsLogger(Sidecar):
 	# Use CoinGecko API to get price of token on a specific date.
 	def get_price_on_date(self, date):
 		date_for_cg = date[-2:] + '-' + date[-5:-3] + '-' + date[0:4] # dd-mm-yyyy
+		
+		now = time.time()
+		# Slows things down, but ensures that we don't hit the rate limit on the CoinGecko API
+		if now < (self.last_cg_time + 0.75):
+			time.sleep(0.75)
+		self.last_cg_time = time.time()
+
 		try:
 			prices = self.cg.get_coin_history_by_id(self.network, date_for_cg)
 		except:
