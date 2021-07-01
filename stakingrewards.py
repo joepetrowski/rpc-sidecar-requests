@@ -21,6 +21,15 @@ class StakingRewardsLogger(Sidecar):
 		self.end_block = inputs['end_block']
 		self.store_blocks = inputs['storage']
 
+		# If we specified some filter, remove addresses that don't match it.
+		removelist = []
+		if inputs['filter']:
+			for a in self.addresses_of_interest:
+				if inputs['filter'] not in self.addresses_of_interest[a]:
+					removelist.append(a)
+		for address in removelist:
+			del(self.addresses_of_interest[address])
+
 		# Data structures
 		self.last_block_time = 0
 		self.rewards = [[], [], [], [], [], [], [], [], [], [], [], []]
@@ -287,6 +296,7 @@ class StakingRewardsLogger(Sidecar):
 					'04' : 6849733,
 					'05' : 7275920,
 					'06' : 7717129,
+					'07' : 8146902,
 				},
 			}
 		elif self.network == 'polkadot':
@@ -309,6 +319,7 @@ class StakingRewardsLogger(Sidecar):
 					'04' : 4434979,
 					'05' : 4866038,
 					'06' : 5308563,
+					'07' : 5738775,
 				},
 			}
 		else:
@@ -422,6 +433,12 @@ def parse_args():
 		help='Do not store blocks on disk for faster retrieval later.',
 		action='store_false'
 	)
+	parser.add_argument(
+		'--filter',
+		help='Filter JSON input for addresses values that contain some keyword.',
+		type=str,
+		default=''
+	)
 
 	args = parser.parse_args()
 
@@ -440,7 +457,8 @@ def parse_args():
 		'start_block': int(args.startblock),
 		'end_block': int(args.endblock),
 		'endpoint': args.sidecar,
-		'storage': args.no_storage 
+		'storage': args.no_storage,
+		'filter': args.filter
 	}
 	return input_args
 
