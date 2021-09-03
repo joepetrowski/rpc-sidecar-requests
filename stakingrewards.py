@@ -220,7 +220,7 @@ class StakingRewardsLogger(Sidecar):
 				if (
 					'method' in event
 					and event['method']['pallet'] == 'staking'
-					and event['method']['method'] == 'Reward'
+					and 'Reward' in event['method']['method'] # covers `Reward` and `Rewarded`
 					and 'data' in event
 					and event['data'][0] in a.keys()
 				):
@@ -298,6 +298,7 @@ class StakingRewardsLogger(Sidecar):
 					'06' : 7717129,
 					'07' : 8146902,
 					'08' : 8590627,
+					'09' : 9027786,
 				},
 			}
 		elif self.network == 'polkadot':
@@ -322,6 +323,7 @@ class StakingRewardsLogger(Sidecar):
 					'06' : 5308563,
 					'07' : 5738775,
 					'08' : 6184985,
+					'09' : 6630197,
 				},
 			}
 		else:
