@@ -97,9 +97,10 @@ class StakingRewardsLogger(Sidecar):
 		return this_block_date
 	
 	# Find the first block to occur on or after a given timestamp.
-	# `time` is in 'YYYY-mm-ddTHH:MM:SS'
-	# `target_block_time` is in seconds
-	def find_block_at_time(self, time: str, target_block_time:int, guess_block_number=None):
+	# `time`               Desired time of the block, in 'YYYY-mm-ddTHH:MM:SS'
+	# `guess_block_number` An estimate if you have a block that's close to the desired time. Usually
+	#                      not used in calling the function, but in recursion.
+	def find_block_at_time(self, time: str, guess_block_number=None):
 		# Convert the input to a UNIX timestamp.
 		desired_time = datetime.fromisoformat(time).timestamp()
 		if self.verbose: print('\nDesired time:     {}'.format(desired_time))
@@ -117,11 +118,11 @@ class StakingRewardsLogger(Sidecar):
 		if self.verbose: print('Guess block time: {}'.format(guess_block_time))
 
 		# Course search.
-		if abs(guess_block_time - desired_time) > target_block_time * 5:
+		if abs(guess_block_time - desired_time) > self.block_time * 5:
 			if self.verbose: print('Doing course search')
-			new_guess = guess_block_number - int((guess_block_time - desired_time) / target_block_time)
+			new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
 			if self.verbose: print('New guess: {}'.format(new_guess))
-			return self.find_block_at_time(time, target_block_time, new_guess)
+			return self.find_block_at_time(time, new_guess)
 
 		# We are close, fine search.
 		else:
@@ -136,9 +137,9 @@ class StakingRewardsLogger(Sidecar):
 					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
-					new_guess = guess_block_number - int((guess_block_time - desired_time) / target_block_time)
+					new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
 					if self.verbose: print('New guess: {}'.format(new_guess))
-					return self.find_block_at_time(time, target_block_time, new_guess)
+					return self.find_block_at_time(time, new_guess)
 			else:
 				if self.verbose: print('Guess block too low')
 				guess_block_child = self.fetch_block(guess_block_number + 1)
@@ -149,9 +150,9 @@ class StakingRewardsLogger(Sidecar):
 					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
-					new_guess = guess_block_number + int((desired_time - guess_block_time) / target_block_time)
+					new_guess = guess_block_number + int((desired_time - guess_block_time) / self.block_time)
 					if self.verbose: print('New guess: {}'.format(new_guess))
-					return self.find_block_at_time(time, target_block_time, new_guess)
+					return self.find_block_at_time(time, new_guess)
 
 	# Compare balances at start and end of a month.
 	def compare_monthly_balances(self, bn: int):
@@ -173,6 +174,8 @@ class StakingRewardsLogger(Sidecar):
 					.format(a, free_diff, reserved_diff)
 				)
 
+	# Fetches a block and potentially writes it to disk. Doesn't do any quality assurance on the
+	# data.
 	def fetch_block(self, block_requested: int):
 		fname = 'blocks/{}/block-{}.json'.format(self.network, block_requested)
 		# Check if we have the block saved and can read it in.
@@ -347,7 +350,7 @@ class StakingRewardsLogger(Sidecar):
 			print('Error: Requested starting from a block in the future. Exiting...')
 			sys.exit()
 		
-		start_block = self.find_block_at_time(self.fromdate, self.block_time)
+		start_block = self.find_block_at_time(self.fromdate)
 
 		if self.network == 'kusama' and start_block < 2671528:
 			print(
@@ -373,7 +376,7 @@ class StakingRewardsLogger(Sidecar):
 			print('Requested ending at a future block. Will end at current chain tip.')
 			return chain_tip
 		
-		end_block = self.find_block_at_time(self.todate, self.block_time)
+		end_block = self.find_block_at_time(self.todate)
 		return end_block
 
 	# The main function.
