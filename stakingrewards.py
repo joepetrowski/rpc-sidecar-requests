@@ -92,6 +92,65 @@ class StakingRewardsLogger(Sidecar):
 			print('Block {}: First block of {}'.format(block['number'], this_block_date))
 		self.last_block_time = this_block_time
 		return this_block_date
+	
+	# Find the first block to occur on or after a given timestamp.
+	# `time` is in 'YYYY-mm-ddTHH:MM:SS'
+	# `target_block_time` is in seconds
+	def find_block_at_time(self, time: str, target_block_time:int, guess_block_number=None):
+		# Convert the input to a UNIX timestamp.
+		desired_time = datetime.fromisoformat(time).timestamp()
+		print('\nDesired time:     {}'.format(desired_time))
+
+		# If no guess is provided, start with the chain tip.
+		if not guess_block_number:
+			guess_block = self.fetch_block(self.get_chain_tip())
+			guess_block_number = int(guess_block['number'])
+			guess_block_time = self.get_block_time(guess_block)
+			assert(guess_block_time >= desired_time)
+		else:
+			guess_block = self.fetch_block(guess_block_number)
+			guess_block_time = self.get_block_time(guess_block)
+		
+		print('Guess block time: {}'.format(guess_block_time))
+
+		# Course search.
+		if abs(guess_block_time - desired_time) > target_block_time * 5:
+			print('Doing course search')
+			new_guess = guess_block_number - int((guess_block_time - desired_time) / target_block_time)
+			print('New guess: {}'.format(new_guess))
+			return self.find_block_at_time(time, target_block_time, new_guess)
+
+		# We are close, fine search.
+		else:
+			print('Doing fine search')
+			if guess_block_time >= desired_time:
+				print('Guess block too high')
+				guess_block_parent = self.fetch_block(guess_block_number - 1)
+				guess_block_parent_time = self.get_block_time(guess_block_parent)
+				if guess_block_parent_time < desired_time:
+					# SUCCESS!
+					target = int(guess_block_number)
+					print('\nSuccess! Block number: {}'.format(target))
+					print('Returning type: {}'.format(type(target)))
+					return target
+				else:
+					new_guess = guess_block_number - int((guess_block_time - desired_time) / target_block_time)
+					print('New guess: {}'.format(new_guess))
+					return self.find_block_at_time(time, target_block_time, new_guess)
+			else:
+				print('Guess block too low')
+				guess_block_child = self.fetch_block(guess_block_number + 1)
+				guess_block_child_time = self.get_block_time(guess_block_child)
+				if guess_block_child_time >= desired_time:
+					# SUCCESS!
+					target = int(guess_block_number + 1)
+					print('\nSuccess! Block number: {}'.format(target))
+					print('Returning type: {}'.format(type(target)))
+					return target
+				else:
+					new_guess = guess_block_number + int((desired_time - guess_block_time) / target_block_time)
+					print('New guess: {}'.format(new_guess))
+					return self.find_block_at_time(time, target_block_time, new_guess)
 
 	# Compare balances at start and end of a month.
 	def compare_monthly_balances(self, bn: int):
@@ -471,4 +530,8 @@ def parse_args():
 if __name__ == '__main__':
 	input_args = parse_args()
 	p = StakingRewardsLogger(input_args)
-	p.sync_blocks()
+	# p.sync_blocks()
+
+	first_block = p.find_block_at_time('2021-10-01T00:00:00', 6)
+	print('Returned type:  {}'.format(type(first_block)))
+	print('\nFirst block: {}'.format(first_block))
