@@ -19,6 +19,7 @@ class StakingRewardsLogger(Sidecar):
 		self.fromdate = inputs['fromdate']
 		self.todate = inputs['todate']
 		self.store_blocks = inputs['storage']
+		self.verbose = inputs['verbose']
 
 		# If we specified some filter, remove addresses that don't match it.
 		removelist = []
@@ -101,7 +102,7 @@ class StakingRewardsLogger(Sidecar):
 	def find_block_at_time(self, time: str, target_block_time:int, guess_block_number=None):
 		# Convert the input to a UNIX timestamp.
 		desired_time = datetime.fromisoformat(time).timestamp()
-		print('\nDesired time:     {}'.format(desired_time))
+		if self.verbose: print('\nDesired time:     {}'.format(desired_time))
 
 		# If no guess is provided, start with the chain tip.
 		if not guess_block_number:
@@ -113,43 +114,43 @@ class StakingRewardsLogger(Sidecar):
 			guess_block = self.fetch_block(guess_block_number)
 			guess_block_time = self.get_block_time(guess_block)
 		
-		print('Guess block time: {}'.format(guess_block_time))
+		if self.verbose: print('Guess block time: {}'.format(guess_block_time))
 
 		# Course search.
 		if abs(guess_block_time - desired_time) > target_block_time * 5:
-			print('Doing course search')
+			if self.verbose: print('Doing course search')
 			new_guess = guess_block_number - int((guess_block_time - desired_time) / target_block_time)
-			print('New guess: {}'.format(new_guess))
+			if self.verbose: print('New guess: {}'.format(new_guess))
 			return self.find_block_at_time(time, target_block_time, new_guess)
 
 		# We are close, fine search.
 		else:
-			print('Doing fine search')
+			if self.verbose: print('Doing fine search')
 			if guess_block_time >= desired_time:
-				print('Guess block too high')
+				if self.verbose: print('Guess block too high')
 				guess_block_parent = self.fetch_block(guess_block_number - 1)
 				guess_block_parent_time = self.get_block_time(guess_block_parent)
 				if guess_block_parent_time < desired_time:
 					# SUCCESS!
 					target = int(guess_block_number)
-					print('\nSuccess! Block number: {}'.format(target))
+					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
 					new_guess = guess_block_number - int((guess_block_time - desired_time) / target_block_time)
-					print('New guess: {}'.format(new_guess))
+					if self.verbose: print('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, target_block_time, new_guess)
 			else:
-				print('Guess block too low')
+				if self.verbose: print('Guess block too low')
 				guess_block_child = self.fetch_block(guess_block_number + 1)
 				guess_block_child_time = self.get_block_time(guess_block_child)
 				if guess_block_child_time >= desired_time:
 					# SUCCESS!
 					target = int(guess_block_number + 1)
-					print('\nSuccess! Block number: {}'.format(target))
+					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
 					new_guess = guess_block_number + int((desired_time - guess_block_time) / target_block_time)
-					print('New guess: {}'.format(new_guess))
+					if self.verbose: print('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, target_block_time, new_guess)
 
 	# Compare balances at start and end of a month.
@@ -382,17 +383,17 @@ class StakingRewardsLogger(Sidecar):
 
 		print('\nStarting collection at block: {:,}'.format(start))
 		print('Ending collection at block:   {:,}'.format(end))
-		# for bn in range(start, end):
-		# 	self.process_block(bn)
+		for bn in range(start, end):
+			self.process_block(bn)
 
-		# 	# This can be slow, so tell us that we're actually making progress.
-		# 	if bn % 100 == 0:
-		# 		print('At block: {:,}'.format(bn))
-		# 		self.erase_line()
+			# This can be slow, so tell us that we're actually making progress.
+			if bn % 100 == 0:
+				print('At block: {:,}'.format(bn))
+				self.erase_line()
 
-		# # Total up the payouts at the end.
-		# self.total_payouts()
-		# self.print_payout_blocks()
+		# Total up the payouts at the end.
+		self.total_payouts()
+		self.print_payout_blocks()
 
 def parse_args():
 	parser = argparse.ArgumentParser()
@@ -431,6 +432,12 @@ def parse_args():
 		type=str,
 		default=''
 	)
+	parser.add_argument(
+		'-v','--verbose',
+		help='Verbose logging.',
+		default=False,
+		action='store_true'
+	)
 
 	args = parser.parse_args()
 
@@ -446,7 +453,8 @@ def parse_args():
 		'todate': args.todate,
 		'endpoint': args.sidecar,
 		'storage': args.no_storage,
-		'filter': args.filter
+		'filter': args.filter,
+		'verbose': args.verbose,
 	}
 	return input_args
 
