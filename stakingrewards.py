@@ -21,6 +21,15 @@ class StakingRewardsLogger(Sidecar):
 		self.store_blocks = inputs['storage']
 		self.verbose = inputs['verbose']
 
+		if self.fromdate[-3] == ':' and self.fromdate[-6] == '+': # e.g. 2021-01-25T00:00:00+00:00
+			self.fromdate = self.fromdate # all good
+		elif self.fromdate[-3] == ':' and self.fromdate[-9] == 'T': # e.g. 2021-01-25T00:00:00
+			# Not forcing UTC, need to add
+			self.fromdate += '+00:00'
+		elif self.fromdate[-3] == '-': # e.g. 2021-01-25
+			# Force UTC and midnight
+			self.fromdate += 'T00:00:00+00:00'
+
 		# If we specified some filter, remove addresses that don't match it.
 		removelist = []
 		if inputs['filter']:
@@ -346,7 +355,9 @@ class StakingRewardsLogger(Sidecar):
 		chain_tip = self.get_chain_tip()
 		chain_tip_time = self.get_block_time(self.fetch_block(chain_tip))
 
-		if datetime.fromisoformat(self.fromdate).timestamp() > chain_tip_time:
+		requested_time = datetime.fromisoformat(self.fromdate).timestamp()
+
+		if requested_time > chain_tip_time:
 			print('Error: Requested starting from a block in the future. Exiting...')
 			sys.exit()
 		
