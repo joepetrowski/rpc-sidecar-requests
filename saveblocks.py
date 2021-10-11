@@ -67,6 +67,12 @@ class SaveBlocks(Sidecar):
 		else:
 			end_block = self.get_chain_tip()
 		
+		if end_block < start_block:
+			print('End block is lower than start block. Your node is probably not synced.')
+			print('Start block: {:,}'.format(start_block))
+			print('End block:   {:,}'.format(end_block))
+			sys.exit()
+		
 		print('Collecting info from block {} to {}\n'.format(start_block, end_block))
 		return start_block, end_block
 

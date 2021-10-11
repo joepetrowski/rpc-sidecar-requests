@@ -16,10 +16,19 @@ class StakingRewardsLogger(Sidecar):
 
 		# Inputs
 		self.addresses_of_interest = inputs['addresses']
-		self.month = inputs['month']
-		self.start_block = inputs['start_block']
-		self.end_block = inputs['end_block']
+		self.fromdate = inputs['fromdate']
+		self.todate = inputs['todate']
 		self.store_blocks = inputs['storage']
+		self.verbose = inputs['verbose']
+
+		if self.fromdate[-3] == ':' and self.fromdate[-6] == '+': # e.g. 2021-01-25T00:00:00+00:00
+			self.fromdate = self.fromdate # all good
+		elif self.fromdate[-3] == ':' and self.fromdate[-9] == 'T': # e.g. 2021-01-25T00:00:00
+			# Not forcing UTC, need to add
+			self.fromdate += '+00:00'
+		elif self.fromdate[-3] == '-': # e.g. 2021-01-25
+			# Force UTC and midnight
+			self.fromdate += 'T00:00:00+00:00'
 
 		# If we specified some filter, remove addresses that don't match it.
 		removelist = []
@@ -45,12 +54,15 @@ class StakingRewardsLogger(Sidecar):
 		if self.network == 'polkadot':
 			self.decimals = 1e10
 			self.token = 'DOT'
+			self.block_time = 6
 		elif self.network == 'kusama':
 			self.decimals = 1e12
 			self.token = 'KSM'
+			self.block_time = 6
 		else:
 			self.decimals = 1 # just show planks
 			self.token = 'DEV'
+			self.block_time = 6
 		
 		# Create storage directory if it doesn't exist yet
 		if self.store_blocks and not os.path.isdir('blocks/{}'.format(self.network)):
@@ -92,6 +104,64 @@ class StakingRewardsLogger(Sidecar):
 			print('Block {}: First block of {}'.format(block['number'], this_block_date))
 		self.last_block_time = this_block_time
 		return this_block_date
+	
+	# Find the first block to occur on or after a given timestamp.
+	# `time`               Desired time of the block, in 'YYYY-mm-ddTHH:MM:SS'
+	# `guess_block_number` An estimate if you have a block that's close to the desired time. Usually
+	#                      not used in calling the function, but in recursion.
+	def find_block_at_time(self, time: str, guess_block_number=None):
+		# Convert the input to a UNIX timestamp.
+		desired_time = datetime.fromisoformat(time).timestamp()
+		if self.verbose: print('\nDesired time:     {}'.format(desired_time))
+
+		# If no guess is provided, start with the chain tip.
+		if not guess_block_number:
+			guess_block_number = self.get_chain_tip()
+			guess_block = self.fetch_block(guess_block_number)
+			guess_block_time = self.get_block_time(guess_block)
+			assert(guess_block_time >= desired_time)
+		else:
+			guess_block = self.fetch_block(guess_block_number)
+			guess_block_time = self.get_block_time(guess_block)
+		
+		if self.verbose: print('Guess block time: {}'.format(guess_block_time))
+
+		# Course search.
+		if abs(guess_block_time - desired_time) > self.block_time * 5:
+			if self.verbose: print('Doing course search')
+			new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
+			if self.verbose: print('New guess: {}'.format(new_guess))
+			return self.find_block_at_time(time, new_guess)
+
+		# We are close, fine search.
+		else:
+			if self.verbose: print('Doing fine search')
+			if guess_block_time >= desired_time:
+				if self.verbose: print('Guess block too high')
+				guess_block_parent = self.fetch_block(guess_block_number - 1)
+				guess_block_parent_time = self.get_block_time(guess_block_parent)
+				if guess_block_parent_time < desired_time:
+					# SUCCESS!
+					target = int(guess_block_number)
+					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
+					return target
+				else:
+					new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
+					if self.verbose: print('New guess: {}'.format(new_guess))
+					return self.find_block_at_time(time, new_guess)
+			else:
+				if self.verbose: print('Guess block too low')
+				guess_block_child = self.fetch_block(guess_block_number + 1)
+				guess_block_child_time = self.get_block_time(guess_block_child)
+				if guess_block_child_time >= desired_time:
+					# SUCCESS!
+					target = int(guess_block_number + 1)
+					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
+					return target
+				else:
+					new_guess = guess_block_number + int((desired_time - guess_block_time) / self.block_time)
+					if self.verbose: print('New guess: {}'.format(new_guess))
+					return self.find_block_at_time(time, new_guess)
 
 	# Compare balances at start and end of a month.
 	def compare_monthly_balances(self, bn: int):
@@ -113,6 +183,8 @@ class StakingRewardsLogger(Sidecar):
 					.format(a, free_diff, reserved_diff)
 				)
 
+	# Fetches a block and potentially writes it to disk. Doesn't do any quality assurance on the
+	# data.
 	def fetch_block(self, block_requested: int):
 		fname = 'blocks/{}/block-{}.json'.format(self.network, block_requested)
 		# Check if we have the block saved and can read it in.
@@ -270,92 +342,26 @@ class StakingRewardsLogger(Sidecar):
 		sys.stdout.write(CURSOR_UP_ONE)
 		sys.stdout.write(ERASE_LINE)
 
-	# Hardcoded lookup table of blocks on Polkadot and Kusama.
-	def look_up_monthly_blocks(self, month: str):
-		if self.network == 'kusama':
-			start_block = 2671528
-			# Only valid from 2064961 (v1058 with simple payouts)
-			# Even better from 2671528 (v2005 without legacy lazy payouts)
-			blocks_by_month = {
-				'2020' : {
-					'03' : 1255489,
-					'04' : 1692602,
-					'05' : 2111318,
-					'06' : 2553304,
-					'07' : 2978427,
-					'08' : 3414276,
-					'09' : 3851274,
-					'10' : 4279102,
-					'11' : 4720924,
-					'12' : 5142315,
-				},
-				'2021' : {
-					'01' : 5578732,
-					'02' : 6015486,
-					'03' : 6410849,
-					'04' : 6849733,
-					'05' : 7275920,
-					'06' : 7717129,
-					'07' : 8146902,
-					'08' : 8590627,
-					'09' : 9027786,
-					'10' : 9457902,
-				},
-			}
-		elif self.network == 'polkadot':
-			start_block = 325148
-			blocks_by_month = {
-				'2020' : {
-					'05' : 0,
-					'06' : 325148, # Note: actual first block of June is 77028, but staking was not enabled until 325148.
-					'07' : 507735,
-					'08' : 952103,
-					'09' : 1396338,
-					'10' : 1826891,
-					'11' : 2270711,
-					'12' : 2700565,
-				},
-				'2021' : {
-					'01' : 3144988,
-					'02' : 3589593,
-					'03' : 3991450,
-					'04' : 4434979,
-					'05' : 4866038,
-					'06' : 5308563,
-					'07' : 5738775,
-					'08' : 6184985,
-					'09' : 6630197,
-					'10' : 7061905,
-				},
-			}
-		else:
-			start_block = 0
-			blocks_by_month = { '1900' : { '00' : 0 } }
+	# Get the block that data collection should start at. Some notes:
+	#
+	# Kusama
+	#   - Only valid from block 2_064_961 (runtime v1058 with simple payouts)
+	#   - Even better from 2_671_528 (runtime v2005 without legacy lazy payouts)
+	#
+	# Polkadot
+	#   - Staking was enabled in block 325_148
+	def get_start_block(self):
+
+		chain_tip = self.get_chain_tip()
+		chain_tip_time = self.get_block_time(self.fetch_block(chain_tip))
+
+		requested_time = datetime.fromisoformat(self.fromdate).timestamp()
+
+		if requested_time > chain_tip_time:
+			print('Error: Requested starting from a block in the future. Exiting...')
+			sys.exit()
 		
-		if month == 'all':
-			if self.network == 'kusama':
-				print('Returning all data from June 2020 to present due to historical incompatibility.')
-				return blocks_by_month['2020']['06'], self.get_chain_tip()
-			elif self.network == 'polkadot':
-				print('Returning all data from June 2020 when staking was enabled.')
-				return 325148, self.get_chain_tip()
-			else:
-				return 0, self.get_chain_tip()
-		elif month == 'blockrange':
-			if self.end_block == -1:
-				end_block = self.get_chain_tip()
-			elif self.end_block < self.start_block:
-				print('End block must be greater than start block. Going to chain tip.')
-				end_block = self.get_chain_tip()
-			else:
-				end_block = self.end_block
-			return self.start_block, end_block
-
-		y = month[:4]
-		m = month[-2:]
-
-		if y in blocks_by_month and m in blocks_by_month[y]:
-			start_block = blocks_by_month[y][m]
+		start_block = self.find_block_at_time(self.fromdate)
 
 		if self.network == 'kusama' and start_block < 2671528:
 			print(
@@ -366,30 +372,31 @@ class StakingRewardsLogger(Sidecar):
 				'Note: Starting search below block 325,148. There will not be any reward events as NPoS was not enabled.'
 			)
 
-		if int(m) == 12: # New Year
-			y = str(int(y) + 1)
-			m = '01'
-		else:
-			m = str(int(m) + 1)
-			m = m.zfill(2)
+		return start_block
 
-		if y in blocks_by_month and m in blocks_by_month[y]:
-			end_block = blocks_by_month[y][m] + 1
-		else:
-			print('No block in registry for end of month. Forecasting...')
-			potential_end_block = 31 * 14400 + start_block
-			chain_height = self.get_chain_tip()
-			if potential_end_block > chain_height:
-				print('Still in the requested month. Collecting data up to present.')
-				end_block = chain_height
-			else:
-				end_block = potential_end_block
-		print('Collecting info for {} from block {} to {}\n'.format(month, start_block, end_block))
-		return start_block, end_block
+	# Get the block that data collection should end at.
+	def get_end_block(self):
+
+		chain_tip = self.get_chain_tip()
+		chain_tip_time = self.get_block_time(self.fetch_block(chain_tip))
+
+		if self.todate.lower() == 'now':
+			return chain_tip
+
+		if datetime.fromisoformat(self.todate).timestamp() > chain_tip_time:
+			print('Requested ending at a future block. Will end at current chain tip.')
+			return chain_tip
+		
+		end_block = self.find_block_at_time(self.todate)
+		return end_block
 
 	# The main function.
 	def sync_blocks(self):
-		start, end = self.look_up_monthly_blocks(self.month)
+		start = self.get_start_block()
+		end = self.get_end_block()
+
+		print('\nStarting collection at block: {:,}'.format(start))
+		print('Ending collection at block:   {:,}'.format(end))
 		for bn in range(start, end):
 			self.process_block(bn)
 
@@ -411,22 +418,16 @@ def parse_args():
 		required=True
 	)
 	parser.add_argument(
-		'-m', '--month',
-		help='The month in which to look up rewards. Format \'yyyy-mm\', \'blockrange\', or \'all\'',
+		'-f', '--fromdate',
+		help='From date or time, inclusive. Format: \'2021-07-20T12:34:56\'',
 		type=str,
 		required=True
 	)
 	parser.add_argument(
-		'--startblock',
-		help='Block on which to start collection.',
+		'-t', '--todate',
+		help='To date or time, exclusive. Format: \'2021-07-20T12:34:56\' or \'now\'',
 		type=str,
-		default='-1'
-	)
-	parser.add_argument(
-		'--endblock',
-		help='Block on which to end collection. If none is provided, it will collect until the chain tip.',
-		type=str,
-		default='-1'
+		default='now'
 	)
 	parser.add_argument(
 		'--sidecar',
@@ -445,6 +446,12 @@ def parse_args():
 		type=str,
 		default=''
 	)
+	parser.add_argument(
+		'-v','--verbose',
+		help='Verbose logging.',
+		default=False,
+		action='store_true'
+	)
 
 	args = parser.parse_args()
 
@@ -454,17 +461,14 @@ def parse_args():
 	else:
 		addresses = { args.stash: 'provided-address' }
 
-	if args.month == 'blockrange':
-		assert(int(args.startblock) >= 0)
-
 	input_args = {
 		'addresses': addresses,
-		'month': args.month,
-		'start_block': int(args.startblock),
-		'end_block': int(args.endblock),
+		'fromdate': args.fromdate,
+		'todate': args.todate,
 		'endpoint': args.sidecar,
 		'storage': args.no_storage,
-		'filter': args.filter
+		'filter': args.filter,
+		'verbose': args.verbose,
 	}
 	return input_args
 

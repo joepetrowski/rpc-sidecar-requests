@@ -8,3 +8,4 @@ __pycache__
 web3_stash.json
 blocks.py
 checkmeta.py
+lib/*
