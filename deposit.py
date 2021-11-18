@@ -1,6 +1,38 @@
 import argparse
 import sys
 
+class ArgParser():
+	def __init__(self) -> None:
+		pass
+
+	def parse_args(self):
+		parser = argparse.ArgumentParser()
+		parser.add_argument(
+			'-n', '--network',
+			help='Polkadot or Kusama',
+			type=str,
+			required=True
+		)
+		parser.add_argument(
+			'-i', '--items',
+			help='Number of items.',
+			type=str,
+			required=True
+		)
+		parser.add_argument(
+			'-b', '--bytes',
+			help='Number of bytes.',
+			type=str,
+			required=True
+		)
+		args = parser.parse_args()
+
+		return {
+			'network': args.network,
+			'items': int(args.items),
+			'bytes': int(args.bytes),
+		}
+
 ''' POLKADOT
 /// Money matters.
 pub mod currency {
@@ -53,36 +85,8 @@ class Kusama:
 	def deposit(self, items: int, bytes: int):
 		return int(items * 2_000 * self.CENTS + bytes * 100 * self.MILLICENTS)
 
-def parse_args():
-	parser = argparse.ArgumentParser()
-	parser.add_argument(
-		'-n', '--network',
-		help='Polkadot or Kusama',
-		type=str,
-		required=True
-	)
-	parser.add_argument(
-		'-i', '--items',
-		help='Number of items.',
-		type=str,
-		required=True
-	)
-	parser.add_argument(
-		'-b', '--bytes',
-		help='Number of bytes.',
-		type=str,
-		required=True
-	)
-	args = parser.parse_args()
-
-	return {
-		'network': args.network,
-		'items': int(args.items),
-		'bytes': int(args.bytes),
-	}
-
 if __name__ == '__main__':
-	input_args = parse_args()
+	input_args = ArgParser().parse_args()
 	if input_args['network'] == 'polkadot':
 		n = Polkadot()
 		decimals = 10
