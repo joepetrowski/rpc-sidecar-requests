@@ -7,6 +7,72 @@ from datetime import datetime
 from pycoingecko import CoinGeckoAPI
 import argparse
 
+class ArgParser():
+	def __init__(self) -> None:
+		pass
+
+	def parse_args(self):
+		parser = argparse.ArgumentParser()
+		parser.add_argument(
+			'-s', '--stash',
+			help='Either a single stash address for which to find rewards, or path to JSON file keyed by stash.',
+			type=str,
+			required=True
+		)
+		parser.add_argument(
+			'-f', '--fromdate',
+			help='From date or time, inclusive. Format: \'2021-07-20T12:34:56\'',
+			type=str,
+			required=True
+		)
+		parser.add_argument(
+			'-t', '--todate',
+			help='To date or time, exclusive. Format: \'2021-07-20T12:34:56\' or \'now\'',
+			type=str,
+			default='now'
+		)
+		parser.add_argument(
+			'--sidecar',
+			help='Endpoint for Sidecar.',
+			type=str,
+			default='http://127.0.0.1:8080/'
+		)
+		parser.add_argument(
+			'--no-storage',
+			help='Do not store blocks on disk for faster retrieval later.',
+			action='store_false'
+		)
+		parser.add_argument(
+			'--filter',
+			help='Filter JSON input for addresses values that contain some keyword.',
+			type=str,
+			default=''
+		)
+		parser.add_argument(
+			'-v','--verbose',
+			help='Verbose logging.',
+			default=False,
+			action='store_true'
+		)
+
+		args = parser.parse_args()
+
+		if args.stash[-5:].lower() == '.json':
+			with open(args.stash, mode='r') as address_file:
+				addresses = json.loads(address_file.read())
+		else:
+			addresses = { args.stash: 'provided-address' }
+
+		return {
+			'addresses': addresses,
+			'fromdate': args.fromdate,
+			'todate': args.todate,
+			'endpoint': args.sidecar,
+			'storage': args.no_storage,
+			'filter': args.filter,
+			'verbose': args.verbose,
+		}
+
 class StakingRewardsLogger(Sidecar):
 	def __init__(self, inputs):
 		# APIs
@@ -21,13 +87,14 @@ class StakingRewardsLogger(Sidecar):
 		self.store_blocks = inputs['storage']
 		self.verbose = inputs['verbose']
 
-		if self.fromdate[-3] == ':' and self.fromdate[-6] == '+': # e.g. 2021-01-25T00:00:00+00:00
-			self.fromdate = self.fromdate # all good
-		elif self.fromdate[-3] == ':' and self.fromdate[-9] == 'T': # e.g. 2021-01-25T00:00:00
-			# Not forcing UTC, need to add
+		# Timestamp is fully formatted, e.g. 2021-01-25T00:00:00+00:00
+		if self.fromdate[-3] == ':' and self.fromdate[-6] == '+':
+			self.fromdate = self.fromdate
+		# Timestamp does not include a time zone, set to UTC. E.g. 2021-01-25T00:00:00
+		elif self.fromdate[-3] == ':' and self.fromdate[-9] == 'T':
 			self.fromdate += '+00:00'
-		elif self.fromdate[-3] == '-': # e.g. 2021-01-25
-			# Force UTC and midnight
+		# Timestamp is only a date, set to midnight UTC. E.g. 2021-01-25
+		elif self.fromdate[-3] == '-':
 			self.fromdate += 'T00:00:00+00:00'
 
 		# If we specified some filter, remove addresses that don't match it.
@@ -104,7 +171,12 @@ class StakingRewardsLogger(Sidecar):
 			print('Block {}: First block of {}'.format(block['number'], this_block_date))
 		self.last_block_time = this_block_time
 		return this_block_date
-	
+
+	# Log something, if the user specified verbosity.
+	def log(self, message: str):
+		if self.verbose:
+			print(message)
+
 	# Find the first block to occur on or after a given timestamp.
 	# `time`               Desired time of the block, in 'YYYY-mm-ddTHH:MM:SS'
 	# `guess_block_number` An estimate if you have a block that's close to the desired time. Usually
@@ -112,7 +184,7 @@ class StakingRewardsLogger(Sidecar):
 	def find_block_at_time(self, time: str, guess_block_number=None):
 		# Convert the input to a UNIX timestamp.
 		desired_time = datetime.fromisoformat(time).timestamp()
-		if self.verbose: print('\nDesired time:     {}'.format(desired_time))
+		self.log('\nDesired time:     {}'.format(desired_time))
 
 		# If no guess is provided, start with the chain tip.
 		if not guess_block_number:
@@ -124,43 +196,43 @@ class StakingRewardsLogger(Sidecar):
 			guess_block = self.fetch_block(guess_block_number)
 			guess_block_time = self.get_block_time(guess_block)
 		
-		if self.verbose: print('Guess block time: {}'.format(guess_block_time))
+		self.log('Guess block time: {}'.format(guess_block_time))
 
 		# Course search.
 		if abs(guess_block_time - desired_time) > self.block_time * 5:
-			if self.verbose: print('Doing course search')
+			self.log('Doing course search')
 			new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
-			if self.verbose: print('New guess: {}'.format(new_guess))
+			self.log('New guess: {}'.format(new_guess))
 			return self.find_block_at_time(time, new_guess)
 
 		# We are close, fine search.
 		else:
-			if self.verbose: print('Doing fine search')
+			self.log('Doing fine search')
 			if guess_block_time >= desired_time:
-				if self.verbose: print('Guess block too high')
+				self.log('Guess block too high')
 				guess_block_parent = self.fetch_block(guess_block_number - 1)
 				guess_block_parent_time = self.get_block_time(guess_block_parent)
 				if guess_block_parent_time < desired_time:
 					# SUCCESS!
 					target = int(guess_block_number)
-					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
+					self.log('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
 					new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
-					if self.verbose: print('New guess: {}'.format(new_guess))
+					self.log('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, new_guess)
 			else:
-				if self.verbose: print('Guess block too low')
+				self.log('Guess block too low')
 				guess_block_child = self.fetch_block(guess_block_number + 1)
 				guess_block_child_time = self.get_block_time(guess_block_child)
 				if guess_block_child_time >= desired_time:
 					# SUCCESS!
 					target = int(guess_block_number + 1)
-					if self.verbose: print('\nSuccess! Block number: {}'.format(target))
+					self.log('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
 					new_guess = guess_block_number + int((desired_time - guess_block_time) / self.block_time)
-					if self.verbose: print('New guess: {}'.format(new_guess))
+					self.log('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, new_guess)
 
 	# Compare balances at start and end of a month.
@@ -409,70 +481,7 @@ class StakingRewardsLogger(Sidecar):
 		self.total_payouts()
 		self.print_payout_blocks()
 
-def parse_args():
-	parser = argparse.ArgumentParser()
-	parser.add_argument(
-		'-s', '--stash',
-		help='Either a single stash address for which to find rewards, or path to JSON file keyed by stash.',
-		type=str,
-		required=True
-	)
-	parser.add_argument(
-		'-f', '--fromdate',
-		help='From date or time, inclusive. Format: \'2021-07-20T12:34:56\'',
-		type=str,
-		required=True
-	)
-	parser.add_argument(
-		'-t', '--todate',
-		help='To date or time, exclusive. Format: \'2021-07-20T12:34:56\' or \'now\'',
-		type=str,
-		default='now'
-	)
-	parser.add_argument(
-		'--sidecar',
-		help='Endpoint for Sidecar.',
-		type=str,
-		default='http://127.0.0.1:8080/'
-	)
-	parser.add_argument(
-		'--no-storage',
-		help='Do not store blocks on disk for faster retrieval later.',
-		action='store_false'
-	)
-	parser.add_argument(
-		'--filter',
-		help='Filter JSON input for addresses values that contain some keyword.',
-		type=str,
-		default=''
-	)
-	parser.add_argument(
-		'-v','--verbose',
-		help='Verbose logging.',
-		default=False,
-		action='store_true'
-	)
-
-	args = parser.parse_args()
-
-	if args.stash[-5:].lower() == '.json':
-		with open(args.stash, mode='r') as address_file:
-			addresses = json.loads(address_file.read())
-	else:
-		addresses = { args.stash: 'provided-address' }
-
-	input_args = {
-		'addresses': addresses,
-		'fromdate': args.fromdate,
-		'todate': args.todate,
-		'endpoint': args.sidecar,
-		'storage': args.no_storage,
-		'filter': args.filter,
-		'verbose': args.verbose,
-	}
-	return input_args
-
 if __name__ == '__main__':
-	input_args = parse_args()
+	input_args = ArgParser().parse_args()
 	p = StakingRewardsLogger(input_args)
 	p.sync_blocks()
