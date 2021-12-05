@@ -351,6 +351,11 @@ class StakingRewardsLogger(Sidecar):
 						and event['data'][0] == author
 					):
 						fees += int(event['data'][1])
+			# check runtime. 9122 has bug where it emits two balances deposit events
+			runtime = self.runtime_spec(block['number'])
+			if int(runtime['specVersion']) == 9122:
+				fees = fees / 2.0
+
 		return fees
 
 	# Add some addresses that we're interested in and see if they received any staking rewards.
