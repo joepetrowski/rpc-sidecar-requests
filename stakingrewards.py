@@ -11,7 +11,7 @@ class ArgParser():
 	def __init__(self) -> None:
 		pass
 
-	def parse_args(self):
+	def parse_args(self) -> dict:
 		parser = argparse.ArgumentParser()
 		parser.add_argument(
 			'-s', '--stash',
@@ -81,7 +81,7 @@ class ArgParser():
 		}
 
 class StakingRewardsLogger(Sidecar):
-	def __init__(self, inputs):
+	def __init__(self, inputs) -> None:
 		# APIs
 		super().__init__(inputs['endpoint'])
 		self.cg = CoinGeckoAPI()
@@ -144,30 +144,30 @@ class StakingRewardsLogger(Sidecar):
 			os.makedirs('blocks/{}'.format(self.network))
 
 	# Get chain spec name.
-	def get_chain_spec(self):
+	def get_chain_spec(self) -> str:
 		spec_info = self.runtime_spec()
 		return spec_info['specName']
 
 	# Get the block number of the latest finalized block.
-	def get_chain_tip(self):
+	def get_chain_tip(self) -> int:
 		latest_block = self.blocks()
 		chain_height = int(latest_block['number'])
 		return chain_height
 
 	# Get the UNIX time of a block.
-	def get_block_time(self, block: dict):
-		ts = 0
+	def get_block_time(self, block: dict) -> float:
+		ts = 0.0
 		for xt in block['extrinsics']:
 			if xt['method']['pallet'] == 'timestamp' and xt['method']['method'] == 'set':
 				# Block timestamp is in _milliseconds_ since epoch
-				ts = int(xt['args']['now']) / 1000
+				ts = float(xt['args']['now']) / 1000.0
 				break
 		if ts == 0:
 			print('No time set for block {}'.format(block['number']))
 		return ts
 
 	# If this is the first block of a new month, log it.
-	def log_new_month(self, block: dict):
+	def log_new_month(self, block: dict) -> str:
 		this_block_time = self.get_block_time(block)
 		last_block_date = datetime.utcfromtimestamp(self.last_block_time).strftime('%Y-%m-%d')
 		this_block_date = datetime.utcfromtimestamp(this_block_time).strftime('%Y-%m-%d')
@@ -181,7 +181,7 @@ class StakingRewardsLogger(Sidecar):
 		return this_block_date
 
 	# Log something, if the user specified verbosity.
-	def log(self, message: str):
+	def log(self, message: str) -> None:
 		if self.verbose:
 			print(message)
 
@@ -189,7 +189,8 @@ class StakingRewardsLogger(Sidecar):
 	# `time`               Desired time of the block, in 'YYYY-mm-ddTHH:MM:SS'
 	# `guess_block_number` An estimate if you have a block that's close to the desired time. Usually
 	#                      not used in calling the function, but in recursion.
-	def find_block_at_time(self, time: str, guess_block_number=None):
+	# `previous_guess`     The previous guess. Prevents getting stuck. Used *only* in recursion.
+	def find_block_at_time(self, time: str, guess_block_number=None, previous_guess=None) -> int:
 		# Convert the input to a UNIX timestamp.
 		desired_time = datetime.fromisoformat(time).timestamp()
 		self.log('\nDesired time:     {}'.format(desired_time))
@@ -205,13 +206,24 @@ class StakingRewardsLogger(Sidecar):
 			guess_block_time = self.get_block_time(guess_block)
 		
 		self.log('Guess block time: {}'.format(guess_block_time))
+		self.log('Guess block: {}'.format(guess_block_number))
 
 		# Course search.
 		if abs(guess_block_time - desired_time) > self.block_time * 5:
 			self.log('Doing course search')
-			new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
+			new_guess = \
+				guess_block_number - \
+				int((guess_block_time - desired_time) / self.block_time)
+			# If block times are off, this can ping-pong between two wrong blocks on either side
+			# of the target. This check prevents the search from doing the same block twice such
+			# that it will (should) eventually converge.
+			if new_guess == previous_guess:
+				if (guess_block_time - desired_time) > 0.0:
+					new_guess += 1
+				else:
+					new_guess -= 1
 			self.log('New guess: {}'.format(new_guess))
-			return self.find_block_at_time(time, new_guess)
+			return self.find_block_at_time(time, new_guess, guess_block_number)
 
 		# We are close, fine search.
 		else:
@@ -226,9 +238,11 @@ class StakingRewardsLogger(Sidecar):
 					self.log('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
-					new_guess = guess_block_number - max([1, int((guess_block_time - desired_time) / self.block_time)])
+					new_guess = \
+						guess_block_number - \
+						max([1, int((guess_block_time - desired_time) / self.block_time)])
 					self.log('New guess: {}'.format(new_guess))
-					return self.find_block_at_time(time, new_guess)
+					return self.find_block_at_time(time, new_guess, guess_block_number)
 			else:
 				self.log('Guess block too low')
 				guess_block_child = self.fetch_block(guess_block_number + 1)
@@ -239,12 +253,14 @@ class StakingRewardsLogger(Sidecar):
 					self.log('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
-					new_guess = guess_block_number + max([1, int((desired_time - guess_block_time) / self.block_time)])
+					new_guess = \
+						guess_block_number + \
+						max([1, int((desired_time - guess_block_time) / self.block_time)])
 					self.log('New guess: {}'.format(new_guess))
-					return self.find_block_at_time(time, new_guess)
+					return self.find_block_at_time(time, new_guess, guess_block_number)
 
 	# Compare balances at start and end of a month.
-	def compare_monthly_balances(self, bn: int):
+	def compare_monthly_balances(self, bn: int) -> None:
 		for a in self.addresses_of_interest:
 			# Get the balances of the account
 			balances = self.account_balance_info(a, bn)
@@ -265,11 +281,10 @@ class StakingRewardsLogger(Sidecar):
 
 	# Fetches a block and potentially writes it to disk. Doesn't do any quality assurance on the
 	# data.
-	def fetch_block(self, block_requested: int):
+	def fetch_block(self, block_requested: int) -> dict:
 		fname = 'blocks/{}/block-{}.json'.format(self.network, block_requested)
 		# Check if we have the block saved and can read it in.
 		if os.path.isfile(fname):
-			# read the file
 			with open(fname, 'r') as f:
 				block = json.loads(f.read())
 		else:
@@ -282,7 +297,7 @@ class StakingRewardsLogger(Sidecar):
 		return block
 
 	# Main function for processing blocks.
-	def process_block(self, block_requested: int):
+	def process_block(self, block_requested: int) -> None:
 		# Get the block
 		block = self.fetch_block(block_requested)
 
@@ -307,7 +322,7 @@ class StakingRewardsLogger(Sidecar):
 				self.add_value_to_totals(date, bn, fees + block_rewards)
 
 	# Use CoinGecko API to get price of token on a specific date.
-	def get_price_on_date(self, date):
+	def get_price_on_date(self, date: str) -> float:
 		date_for_cg = date[-2:] + '-' + date[-5:-3] + '-' + date[0:4] # dd-mm-yyyy
 		
 		now = time.time()
@@ -323,14 +338,14 @@ class StakingRewardsLogger(Sidecar):
 			return 0.0
 
 		if 'market_data' in prices:
-			price = prices['market_data']['current_price']['usd']
+			price = float(prices['market_data']['current_price']['usd'])
 		else:
 			# Just assuming here that this date is before trading.
 			price = 0.0
 		return price
 
 	# Add any rewards to totals.
-	def add_value_to_totals(self, date, bn, token_quantity):
+	def add_value_to_totals(self, date: str, bn: int, token_quantity: int) -> None:
 		month = int(date[-5:-3])
 		p = self.get_price_on_date(date)
 		value = round(p * token_quantity / self.decimals, 2)
@@ -341,8 +356,8 @@ class StakingRewardsLogger(Sidecar):
 		self.add_to_totals(bn, month, token_quantity, value)
 
 	# In case the stash addresses are validators, check for transaction fees.
-	def check_for_fees(self, block):
-		fees = 0
+	def check_for_fees(self, block: dict) -> int:
+		fees: int = 0
 		author = block['authorId']
 		if author in self.addresses_of_interest:
 			print('Authored block! {} by {}'.format(
@@ -362,7 +377,7 @@ class StakingRewardsLogger(Sidecar):
 			# check runtime. 9122 has bug where it emits two balances deposit events
 			runtime = self.runtime_spec(block['number'])
 			if int(runtime['specVersion']) == 9122:
-				fees = fees / 2.0
+				fees = fees / 2
 
 		return fees
 
@@ -372,7 +387,7 @@ class StakingRewardsLogger(Sidecar):
 	# addresses in aggregate.
 	def check_for_staking_events(self, bn: int, xt: dict, date: str) -> int:
 		a = self.addresses_of_interest
-		payout = 0
+		payout: int = 0
 		if 'events' in xt:
 			for event in xt['events']:
 				if (
@@ -415,12 +430,12 @@ class StakingRewardsLogger(Sidecar):
 		return payout
 
 	# Add payout and value to monthly totals.
-	def add_to_totals(self, bn: int, month: int, payout: int, value: float):
+	def add_to_totals(self, bn: int, month: int, payout: int, value: float) -> None:
 		month -= 1
 		self.rewards[month].append((bn, payout, value))
 
 	# Calculate total payouts for a month.
-	def month_payout(self, month: int):
+	def month_payout(self, month: int) -> None:
 		month -= 1
 		r = self.rewards[month]
 		tokens = 0
@@ -432,7 +447,7 @@ class StakingRewardsLogger(Sidecar):
 		print('\n{}: {} {}, {} USD\n'.format(self.months[month], tokens, self.token, dollars))
 
 	# Calculate total payouts for all months.
-	def total_payouts(self):
+	def total_payouts(self) -> None:
 		print('\n')
 		for ii in range(len(self.rewards)):
 			tokens = 0
@@ -444,14 +459,14 @@ class StakingRewardsLogger(Sidecar):
 				dollars = round(total[2], 2)
 			print('{}: {} {}, {} USD'.format(self.months[ii], tokens, self.token, dollars))
 
-	def print_payout_blocks(self):
+	def print_payout_blocks(self) -> None:
 		for ii in range(len(self.rewards)):
 			r = self.rewards[ii]
 			if len(r) > 0:
 				reward_blocks = [list(p) for p in zip(*r)][0]
 				print('{}: {}'.format(self.months[ii], reward_blocks))
 
-	def erase_line(self):
+	def erase_line(self) -> None:
 		CURSOR_UP_ONE = '\x1b[1A'
 		ERASE_LINE = '\x1b[2K'
 		sys.stdout.write(CURSOR_UP_ONE)
@@ -465,7 +480,7 @@ class StakingRewardsLogger(Sidecar):
 	#
 	# Polkadot
 	#   - Staking was enabled in block 325_148
-	def get_start_block(self):
+	def get_start_block(self) -> int:
 
 		chain_tip = self.get_chain_tip()
 		chain_tip_time = self.get_block_time(self.fetch_block(chain_tip))
@@ -486,11 +501,10 @@ class StakingRewardsLogger(Sidecar):
 			print(
 				'Note: Starting search below block 325,148. There will not be any reward events as NPoS was not enabled.'
 			)
-
 		return start_block
 
 	# Get the block that data collection should end at.
-	def get_end_block(self):
+	def get_end_block(self) -> int:
 
 		chain_tip = self.get_chain_tip()
 		chain_tip_time = self.get_block_time(self.fetch_block(chain_tip))
@@ -505,7 +519,7 @@ class StakingRewardsLogger(Sidecar):
 		end_block = self.find_block_at_time(self.todate)
 		return end_block
 
-	def delay_start(self):
+	def delay_start(self) -> None:
 		if self.delay > 0:
 			for ii in range(0, self.delay):
 
