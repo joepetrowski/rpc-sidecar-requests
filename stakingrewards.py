@@ -49,6 +49,12 @@ class ArgParser():
 			default=''
 		)
 		parser.add_argument(
+			'-d', '--delay',
+			help='Delay execution by some number of minutes.',
+			type=str,
+			default='0'
+		)
+		parser.add_argument(
 			'-v','--verbose',
 			help='Verbose logging.',
 			default=False,
@@ -70,6 +76,7 @@ class ArgParser():
 			'endpoint': args.sidecar,
 			'storage': args.no_storage,
 			'filter': args.filter,
+			'delay': int(args.delay),
 			'verbose': args.verbose,
 		}
 
@@ -85,6 +92,7 @@ class StakingRewardsLogger(Sidecar):
 		self.fromdate = inputs['fromdate']
 		self.todate = inputs['todate']
 		self.store_blocks = inputs['storage']
+		self.delay = inputs['delay']
 		self.verbose = inputs['verbose']
 
 		# Timestamp is fully formatted, e.g. 2021-01-25T00:00:00+00:00
@@ -218,7 +226,7 @@ class StakingRewardsLogger(Sidecar):
 					self.log('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
-					new_guess = guess_block_number - int((guess_block_time - desired_time) / self.block_time)
+					new_guess = guess_block_number - max([1, int((guess_block_time - desired_time) / self.block_time)])
 					self.log('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, new_guess)
 			else:
@@ -231,7 +239,7 @@ class StakingRewardsLogger(Sidecar):
 					self.log('\nSuccess! Block number: {}'.format(target))
 					return target
 				else:
-					new_guess = guess_block_number + int((desired_time - guess_block_time) / self.block_time)
+					new_guess = guess_block_number + max([1, int((desired_time - guess_block_time) / self.block_time)])
 					self.log('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, new_guess)
 
@@ -293,7 +301,7 @@ class StakingRewardsLogger(Sidecar):
 			for xt in block['extrinsics']:
 				if not xt['events']:
 					print('Block {}: Error decoding events'.format(bn))
-				block_rewards += self.check_for_payouts(xt)
+				block_rewards += self.check_for_staking_events(bn, xt, date)
 			
 			if fees + block_rewards > 0:
 				self.add_value_to_totals(date, bn, fees + block_rewards)
@@ -358,10 +366,11 @@ class StakingRewardsLogger(Sidecar):
 
 		return fees
 
-	# Add some addresses that we're interested in and see if they received any staking rewards.
+	# Add some addresses that we're interested in and see if there were any events related to
+	# staking.
 	# Note: does not associate rewards with address. As in, it gives the total rewards of all
 	# addresses in aggregate.
-	def check_for_payouts(self, xt: dict):
+	def check_for_staking_events(self, bn: int, xt: dict, date: str) -> int:
 		a = self.addresses_of_interest
 		payout = 0
 		if 'events' in xt:
@@ -369,11 +378,40 @@ class StakingRewardsLogger(Sidecar):
 				if (
 					'method' in event
 					and event['method']['pallet'] == 'staking'
-					and 'Reward' in event['method']['method'] # covers `Reward` and `Rewarded`
 					and 'data' in event
 					and event['data'][0] in a.keys()
 				):
-					payout += int(event['data'][1])
+					# Most important, check for rewards. Covers `Reward` and `Rewarded`
+					if 'Reward' in event['method']['method']:
+						payout += int(event['data'][1])
+					# Check for events related to bonding.
+					elif event['method']['method'] in ['Bonded', 'Unbonded', 'Withdrawn']:
+						print('{} Block {}: Account {} has {} {} {}'.format(
+							date,
+							bn,
+							a[event['data'][0]],
+							event['method']['method'],
+							float(event['data'][1]) / self.decimals,
+							self.token
+						))
+					# The worst. Check if slashed.
+					elif event['method']['method'] == 'Slashed':
+						slash = float(event['data'][1])
+						p = self.get_price_on_date(date)
+						v = round(p * slash / self.decimals, 2)
+						print('{} Block {}: Account {} slashed {} {} ({} USD)'.format(
+							date,
+							bn,
+							a[event['data'][0]],
+							slash,
+							self.token,
+							v
+						))
+					# Check if chilled.
+					elif event['method']['method'] == 'Chilled':
+						print(
+							'{} Block {}: Account {} chilled'.format(date, bn, a[event['data'[0]]])
+						)
 		return payout
 
 	# Add payout and value to monthly totals.
@@ -467,8 +505,32 @@ class StakingRewardsLogger(Sidecar):
 		end_block = self.find_block_at_time(self.todate)
 		return end_block
 
+	def delay_start(self):
+		if self.delay > 0:
+			for ii in range(0, self.delay):
+
+				minutes_remaining = self.delay - ii
+
+				hours = int(minutes_remaining / 60)
+				hours_unit = 'hour' if hours == 1 else 'hours'
+
+				minutes = minutes_remaining % 60
+				minutes_unit = 'minute' if minutes == 1 else 'minutes'
+
+				if hours > 0:
+					s = 'Starting in {} {} {} {}'.format(hours, hours_unit, minutes, minutes_unit)
+				else:
+					s = 'Starting in {} {}'.format(minutes, minutes_unit)
+				
+				print(s)
+				time.sleep(60.0)
+				self.erase_line()
+
 	# The main function.
-	def sync_blocks(self):
+	def main(self) -> None:
+
+		self.delay_start()
+
 		start = self.get_start_block()
 		end = self.get_end_block()
 
@@ -489,4 +551,4 @@ class StakingRewardsLogger(Sidecar):
 if __name__ == '__main__':
 	input_args = ArgParser().parse_args()
 	p = StakingRewardsLogger(input_args)
-	p.sync_blocks()
+	p.main()
