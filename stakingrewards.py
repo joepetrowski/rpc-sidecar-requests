@@ -7,9 +7,30 @@ from datetime import datetime
 from pycoingecko import CoinGeckoAPI
 import argparse
 
-class ArgParser():
+class StakingRewardsLogger(Sidecar):
 	def __init__(self) -> None:
-		pass
+
+		# Inputs
+		inputs = self.parse_args()
+		self.process_inputs(inputs)
+		
+		# APIs
+		super().__init__(inputs['endpoint'])
+		self.cg = CoinGeckoAPI()
+		self.last_cg_time = time.time()
+
+		# Network specific
+		self.config_network()
+
+		# Data structures
+		self.last_block_time = 0
+		self.rewards = [[], [], [], [], [], [], [], [], [], [], [], []]
+		self.monthly_balances = {}
+		for a in self.addresses_of_interest:
+			self.monthly_balances[a] = []
+		self.months = [
+			'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+		]
 
 	def parse_args(self) -> dict:
 		parser = argparse.ArgumentParser()
@@ -80,14 +101,7 @@ class ArgParser():
 			'verbose': args.verbose,
 		}
 
-class StakingRewardsLogger(Sidecar):
-	def __init__(self, inputs) -> None:
-		# APIs
-		super().__init__(inputs['endpoint'])
-		self.cg = CoinGeckoAPI()
-		self.last_cg_time = time.time()
-
-		# Inputs
+	def process_inputs(self, inputs) -> None:
 		self.addresses_of_interest = inputs['addresses']
 		self.fromdate = inputs['fromdate']
 		self.todate = inputs['todate']
@@ -114,17 +128,7 @@ class StakingRewardsLogger(Sidecar):
 		for address in removelist:
 			del(self.addresses_of_interest[address])
 
-		# Data structures
-		self.last_block_time = 0
-		self.rewards = [[], [], [], [], [], [], [], [], [], [], [], []]
-		self.monthly_balances = {}
-		for a in self.addresses_of_interest:
-			self.monthly_balances[a] = []
-		self.months = [
-			'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-		]
-
-		# Network specific
+	def config_network(self) -> None:
 		self.network = self.get_chain_spec()
 		if self.network == 'polkadot':
 			self.decimals = 1e10
@@ -138,7 +142,7 @@ class StakingRewardsLogger(Sidecar):
 			self.decimals = 1 # just show planks
 			self.token = 'DEV'
 			self.block_time = 6
-		
+
 		# Create storage directory if it doesn't exist yet
 		if self.store_blocks and not os.path.isdir('blocks/{}'.format(self.network)):
 			os.makedirs('blocks/{}'.format(self.network))
@@ -162,7 +166,7 @@ class StakingRewardsLogger(Sidecar):
 				# Block timestamp is in _milliseconds_ since epoch
 				ts = float(xt['args']['now']) / 1000.0
 				break
-		if ts == 0:
+		if ts == 0.0:
 			print('No time set for block {}'.format(block['number']))
 		return ts
 
@@ -204,7 +208,7 @@ class StakingRewardsLogger(Sidecar):
 		else:
 			guess_block = self.fetch_block(guess_block_number)
 			guess_block_time = self.get_block_time(guess_block)
-		
+
 		self.log('Guess block time: {}'.format(guess_block_time))
 		self.log('Guess block: {}'.format(guess_block_number))
 
@@ -317,14 +321,14 @@ class StakingRewardsLogger(Sidecar):
 				if not xt['events']:
 					print('Block {}: Error decoding events'.format(bn))
 				block_rewards += self.check_for_staking_events(bn, xt, date)
-			
+
 			if fees + block_rewards > 0:
 				self.add_value_to_totals(date, bn, fees + block_rewards)
 
 	# Use CoinGecko API to get price of token on a specific date.
 	def get_price_on_date(self, date: str) -> float:
 		date_for_cg = date[-2:] + '-' + date[-5:-3] + '-' + date[0:4] # dd-mm-yyyy
-		
+
 		now = time.time()
 		# Slows things down, but ensures that we don't hit the rate limit on the CoinGecko API
 		if now < (self.last_cg_time + 0.75):
@@ -490,7 +494,7 @@ class StakingRewardsLogger(Sidecar):
 		if requested_time > chain_tip_time:
 			print('Error: Requested starting from a block in the future. Exiting...')
 			sys.exit()
-		
+
 		start_block = self.find_block_at_time(self.fromdate)
 
 		if self.network == 'kusama' and start_block < 2671528:
@@ -515,7 +519,7 @@ class StakingRewardsLogger(Sidecar):
 		if datetime.fromisoformat(self.todate).timestamp() > chain_tip_time:
 			print('Requested ending at a future block. Will end at current chain tip.')
 			return chain_tip
-		
+
 		end_block = self.find_block_at_time(self.todate)
 		return end_block
 
@@ -535,7 +539,7 @@ class StakingRewardsLogger(Sidecar):
 					s = 'Starting in {} {} {} {}'.format(hours, hours_unit, minutes, minutes_unit)
 				else:
 					s = 'Starting in {} {}'.format(minutes, minutes_unit)
-				
+
 				print(s)
 				time.sleep(60.0)
 				self.erase_line()
@@ -563,6 +567,4 @@ class StakingRewardsLogger(Sidecar):
 		self.print_payout_blocks()
 
 if __name__ == '__main__':
-	input_args = ArgParser().parse_args()
-	p = StakingRewardsLogger(input_args)
-	p.main()
+	StakingRewardsLogger().main()
