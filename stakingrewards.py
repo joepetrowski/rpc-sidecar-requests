@@ -25,12 +25,8 @@ class StakingRewardsLogger(Sidecar):
 		# Data structures
 		self.last_block_time = 0
 		self.rewards = [[], [], [], [], [], [], [], [], [], [], [], []]
-		self.monthly_balances = {}
-		for a in self.addresses_of_interest:
-			self.monthly_balances[a] = []
-		self.months = [
-			'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-		]
+		self.months = \
+			['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 	def parse_args(self) -> dict:
 		parser = argparse.ArgumentParser()
@@ -101,7 +97,7 @@ class StakingRewardsLogger(Sidecar):
 			'verbose': args.verbose,
 		}
 
-	def process_inputs(self, inputs) -> None:
+	def process_inputs(self, inputs: dict) -> None:
 		self.addresses_of_interest = inputs['addresses']
 		self.fromdate = inputs['fromdate']
 		self.todate = inputs['todate']
@@ -178,7 +174,6 @@ class StakingRewardsLogger(Sidecar):
 		month = int(this_block_date[-5:-3])
 		if this_block_date[:-3] > last_block_date[:-3]:
 			if self.last_block_time > 0:
-				self.compare_monthly_balances(int(block['number']))
 				self.month_payout(month - 1)
 			print('Block {}: First block of {}'.format(block['number'], this_block_date))
 		self.last_block_time = this_block_time
@@ -262,26 +257,6 @@ class StakingRewardsLogger(Sidecar):
 						max([1, int((desired_time - guess_block_time) / self.block_time)])
 					self.log('New guess: {}'.format(new_guess))
 					return self.find_block_at_time(time, new_guess, guess_block_number)
-
-	# Compare balances at start and end of a month.
-	def compare_monthly_balances(self, bn: int) -> None:
-		for a in self.addresses_of_interest:
-			# Get the balances of the account
-			balances = self.account_balance_info(a, bn)
-			free = int(balances['free'])
-			reserved = int(balances['reserved'])
-
-			# Add them to the list
-			self.monthly_balances[a].append((bn, free, reserved))
-
-			# Compare them to the last balance
-			if len(self.monthly_balances[a]) > 1:
-				free_diff = self.monthly_balances[a][-1][1] - self.monthly_balances[a][-2][1]
-				reserved_diff = self.monthly_balances[a][-1][2] - self.monthly_balances[a][-2][2]
-				print(
-					'\nAddress: {}\nFree Change:     {}\nReserved Change: {}'
-					.format(a, free_diff, reserved_diff)
-				)
 
 	# Fetches a block and potentially writes it to disk. Doesn't do any quality assurance on the
 	# data.
@@ -564,7 +539,8 @@ class StakingRewardsLogger(Sidecar):
 
 		# Total up the payouts at the end.
 		self.total_payouts()
-		self.print_payout_blocks()
+		if self.verbose:
+			self.print_payout_blocks()
 
 if __name__ == '__main__':
 	StakingRewardsLogger().main()
