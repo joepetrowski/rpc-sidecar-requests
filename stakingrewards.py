@@ -28,6 +28,7 @@ class StakingRewardsLogger(Sidecar):
 		self.months = \
 			['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+	# Parse input arguments.
 	def parse_args(self) -> dict:
 		parser = argparse.ArgumentParser()
 		parser.add_argument(
@@ -97,6 +98,7 @@ class StakingRewardsLogger(Sidecar):
 			'verbose': args.verbose,
 		}
 
+	# Process inputs.
 	def process_inputs(self, inputs: dict) -> None:
 		self.addresses_of_interest = inputs['addresses']
 		self.fromdate = inputs['fromdate']
@@ -124,6 +126,7 @@ class StakingRewardsLogger(Sidecar):
 		for address in removelist:
 			del(self.addresses_of_interest[address])
 
+	# Set network-specific parameters.
 	def config_network(self) -> None:
 		self.network = self.get_chain_spec()
 		if self.network == 'polkadot':
@@ -404,7 +407,7 @@ class StakingRewardsLogger(Sidecar):
 					# Check if chilled.
 					elif event['method']['method'] == 'Chilled':
 						print(
-							'{} Block {}: Account {} chilled'.format(date, bn, a[event['data'[0]]])
+							'{} Block {}: Account {} chilled'.format(date, bn, a[event['data'][0]])
 						)
 		return payout
 
